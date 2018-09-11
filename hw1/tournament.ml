@@ -47,3 +47,27 @@ let parenize (input: tourna): string =
     result ^ "(" ^ (traverse n) ^ " " ^ (traverse m) ^ ")" in
 
   traverse input;;
+
+
+(* Here comes test codes *)
+let string2team (s:string):team =
+  match s with
+  | "Korea" -> Korea
+  | "France" -> France
+  | "Usa" -> Usa
+  | "Brazil" -> Brazil
+  | "Japan" -> Japan
+  | "Nigeria" -> Nigeria
+  | "Cameroon" -> Cameroon
+  | "Poland" -> Poland
+  | "Portugal" -> Portugal
+  | "Italy" -> Italy
+  | "Germany" -> Germany
+  | "Norway" -> Norway
+  | "Sweden" -> Sweden
+  | "England" -> England
+  | "Argentina" -> Argentina;;
+
+let a = [|"Korea"; "France"; "Usa"; "Brazil"; "Japan"; "Nigeria";
+                 "Cameroon"; "Poland"; "Portugal"; "Italy"; "Germany"; "Norway";
+                 "Sweden"; "England"; "Argentina"|];;
