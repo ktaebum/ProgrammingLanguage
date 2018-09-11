@@ -30,6 +30,7 @@ let rec natmul ((x, y): (nat * nat)):nat=
   | (SUCC _, SUCC ZERO) -> x
   | (SUCC xx, _) -> natadd (y, (natmul (xx, y)));;
 
+(*
 (* Here comes Tester *)
 let rec number2nat (n:int):nat = 
   if n = 0
@@ -79,3 +80,4 @@ let test_mul () =
 
 test_sum ();;
 test_mul ();;
+*)

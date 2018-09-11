@@ -1,12 +1,11 @@
 let rec sigma ((a, b, f): (int * int *(int->int))): int = 
-  if a > b then 
-    (* prevent infinite loop *)
-    sigma (b, a, f)
+  if a > b then 0 (* from spec *)
   else if a = b then f a
   else (* a < b, normal case *)
     f a + sigma (a + 1, b, f);;
 
 
+(*
 (* Tester *)
 let identity (x:int):int = x;;
 let square (x:int):int = x * x;;
@@ -25,3 +24,4 @@ let test () =
 
 
 test();;
+*)
