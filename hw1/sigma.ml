@@ -2,7 +2,7 @@ let rec sigma ((a, b, f): (int * int *(int->int))): int =
   if a > b then 0 (* from spec *)
   else if a = b then f a
   else (* a < b, normal case *)
-    f a + sigma (a + 1, b, f);;
+    f a + sigma (a + 1, b, f)
 
 
 (*

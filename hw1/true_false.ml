@@ -7,7 +7,7 @@ type formula = TRUE
              | LESS of expr * expr
 and expr = NUM of int
          | PLUS of expr * expr
-         | MINUS of expr * expr;;
+         | MINUS of expr * expr
 
 
 let rec eval (f:formula):bool = 
@@ -51,4 +51,4 @@ let rec eval (f:formula):bool =
     else
       (* do not calculate f2 *)
       true
-  | LESS (e1, e2) -> (calculate_expression e1) < (calculate_expression e2);;
+  | LESS (e1, e2) -> (calculate_expression e1) < (calculate_expression e2)

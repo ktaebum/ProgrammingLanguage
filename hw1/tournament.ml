@@ -12,7 +12,7 @@ type team = Korea
           | Norway
           | Sweden
           | England
-          | Argentina;;
+          | Argentina
 
 let team2string (t:team):string =
   (* Convert given team type to string *)
@@ -31,7 +31,7 @@ let team2string (t:team):string =
   | Norway -> "Norway"
   | Sweden -> "Sweden"
   | England -> "England"
-  | Argentina -> "Argentina";;
+  | Argentina -> "Argentina"
 
 type tourna = LEAF of team
             | NODE of tourna * tourna;;
@@ -46,4 +46,4 @@ let parenize (input: tourna): string =
      * after traverse right child, append ) *)
     result ^ "(" ^ (traverse n) ^ " " ^ (traverse m) ^ ")" in
 
-  traverse input;;
+  traverse input

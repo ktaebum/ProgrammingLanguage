@@ -1,12 +1,12 @@
 type nat = ZERO
-         | SUCC of nat;;
+         | SUCC of nat
 
 
 let rec natadd ((x, y): (nat * nat)):nat =
   match (x, y) with (ZERO, ZERO) -> ZERO
   | (ZERO, _) -> y
   | (_, ZERO) -> x
-  | (SUCC xx, SUCC yy) -> SUCC (SUCC (natadd (xx, yy)));;
+  | (SUCC xx, SUCC yy) -> SUCC (SUCC (natadd (xx, yy)))
 
 let rec natmul ((x, y): (nat * nat)):nat=
   (* 
@@ -28,7 +28,7 @@ let rec natmul ((x, y): (nat * nat)):nat=
   | (_, ZERO) -> ZERO
   | (SUCC ZERO, SUCC _) -> y
   | (SUCC _, SUCC ZERO) -> x
-  | (SUCC xx, _) -> natadd (y, (natmul (xx, y)));;
+  | (SUCC xx, _) -> natadd (y, (natmul (xx, y)))
 
 (*
 (* Here comes Tester *)
