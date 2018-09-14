@@ -3,7 +3,7 @@ let sumprod ((f, n, k): ((int * int -> float) * int * int)): float =
 
   (* recursive product function *)
   let rec fixed_i ((ii, jj): (int * int)):float =
-    if k < 1 then 0.0
+    if k < 1 then 1.0
     else if jj = k 
     then begin
       f (ii, k)
