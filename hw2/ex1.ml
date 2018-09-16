@@ -40,13 +40,19 @@ let rec calculate (e: exp):float =
   | MUL (e1, e2) -> (calculate e1) *. (calculate e2)
   | DIV (e1, e2) -> (calculate e1) /. (calculate e2)
   | SIGMA (e1, e2, e3) -> 
-    if (calculate e1) > (calculate e2)
+    let a = int_of_float (calculate e1) in
+    let b = int_of_float (calculate e2) in  
+    if a > b
     then 0.
-    else begin
-      let a = int_of_float (calculate e1) in
-      let b = int_of_float (calculate e2) in  
-      if a > b
-      then 0.
-      else (assign e3 (float_of_int a)) +. (calculate (SIGMA (INT (a + 1), INT b, e3)))
-    end
-  | INTEGRAL (e1, e2, e3) -> 1.
+    else (assign e3 (float_of_int a)) +. 
+         (calculate (SIGMA (INT (a + 1), INT b, e3)))
+  | INTEGRAL (e1, e2, e3) -> 
+    let dx = 0.1 in
+    let a = (calculate e1) in
+    let b = (calculate e2) in
+    if a > b then ~-.(calculate (INTEGRAL (REAL b, REAL a, e3)))
+    else if (b -. a) < dx then 0.
+    else 
+      let block =
+        (assign e3 a) *. dx in
+      block +. (calculate (INTEGRAL (REAL (a +. dx), REAL b, e3)))
