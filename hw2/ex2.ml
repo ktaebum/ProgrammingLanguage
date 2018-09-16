@@ -81,70 +81,6 @@ let rec diff ((eq, s): (ae * string)):ae =
     | (_, _) -> -1
   in
 
-  let compareAEinSUMList (x: ae) (y: ae):int =
-    (* Compare function for sum list sorting
-     * Higher power goes first
-     * Single VAR next
-     * CONST Last *)
-    (compareAEinTIMESList x y)
-  in
-
-
-  let rec hasVarInList (l: ae list):bool =
-    (* return whether target list l has variable s*)
-    match l with
-    | [] -> false
-    | VAR v :: tl -> 
-      if v = s then true
-      else hasVarInList tl
-    | POWER (v, _) :: tl ->
-      if v = s then true
-      else hasVarInList tl
-    | TIMES ll :: tl ->
-      if hasVarInList ll then true
-      else hasVarInList tl
-    | SUM ll :: tl ->
-      if hasVarInList ll then true
-      else hasVarInList tl
-    | CONST _ :: tl -> hasVarInList tl
-  in
-
-  let rec diffSUMList (l:ae list):ae list =
-    match l with 
-    | [] -> []
-    | hd :: tl -> (diff (hd, s)) :: (diffSUMList tl)
-  in
-
-  let rec diffTIMESList (l:ae list): ae list =
-    (* definition of behavior for TIMES type list 
-     * Invariant:
-     *  - Since this function be called when target list has
-     *    s inside.
-     *    So ignore any other unrelated variables
-     *)
-    match l with 
-    | [] -> []
-    | CONST c :: tl->
-      if c = 0 then [CONST 0]
-      else if c = 1 then diffTIMESList tl
-      else (CONST c) :: diffTIMESList tl
-    | VAR v :: tl ->
-      if v = s then (diff (VAR v, s)) :: diffTIMESList tl
-      else (VAR v) :: diffTIMESList tl
-    | POWER (v, p) :: tl ->
-      if v = s then (diff (POWER (v, p), s)) :: diffTIMESList tl
-      else (POWER (v, p)) :: diffTIMESList tl
-    | TIMES ll :: tl -> diffTIMESList ll @ diffTIMESList tl
-    | SUM ll :: tl ->
-      let rec diffSUMinTIMES (sl:ae list):ae list = 
-        match sl with
-        | [] -> []
-        | sl_hd :: sl_tl  -> (diff (TIMES (sl_hd :: tl), s)) :: (diffSUMinTIMES
-                                                                 sl_tl)
-      in
-      [SUM (diffSUMinTIMES ll)] 
-  in
-
   let rec unfoldSUMList (l:ae list):ae list =
     (* simplify sumlist *)
     match l with
@@ -175,7 +111,7 @@ let rec diff ((eq, s): (ae * string)):ae =
     if v = s then CONST 1
     else CONST 0
   | POWER (v, p) -> 
-    if (v <> s) then eq (* cannot diff *)
+    if (v <> s) then CONST 0 (* cannot diff *)
     else begin
       if p = 0
       then 
@@ -190,16 +126,37 @@ let rec diff ((eq, s): (ae * string)):ae =
   | TIMES seq -> 
     if seq = [] then raise InvalidArgument
     else begin
-      if hasVarInList seq 
-      then begin
-        print_endline "get";
-        TIMES (List.sort compareAEinTIMESList (unfoldTIMESList ((diffTIMESList seq))))
-      end
-      else CONST 0
+      let rec diffTIMES (l1: ae list) (l2: ae list) (fIdx: int):ae list list =
+        let rec diffTIMES_ (l: ae list) (skipIdx: int) (curIdx: int): ae list =
+            match l with
+            | [] -> []
+            | hd :: tl ->
+              if skipIdx = curIdx then (diffTIMES_ tl skipIdx (curIdx + 1))
+              else hd :: (diffTIMES_ tl skipIdx (curIdx + 1))
+        in
+        match l1 with
+        | [] -> []
+        | hd :: tl -> ((diff (hd, s)) :: (diffTIMES_ l2 fIdx 0)) :: (diffTIMES
+                                                                       tl l2
+                                                                       (fIdx +
+                                                                        1))
+      in
+      let unfolded = (diffTIMES seq seq 0) in
+      let rec wrapUp (l: ae list list): ae list =
+        match l with 
+        | [] -> []
+        | hd :: tl -> (TIMES hd) :: (wrapUp tl)
+      in
+      SUM (unfoldSUMList (wrapUp unfolded))
     end
   | SUM seq -> 
+    let rec diffSUMList (l:ae list):ae list =
+      match l with 
+      | [] -> []
+      | hd :: tl -> (diff (hd, s)) :: (diffSUMList tl)
+    in
     if seq = [] then raise InvalidArgument
-    else SUM ((unfoldSUMList (diffSUMList seq)))
+    else SUM (diffSUMList seq)
 
 
 let test1 () =
@@ -212,7 +169,28 @@ let test1 () =
 
 let test2()=
   let first = SUM [VAR "x"; VAR "b"] in
-  let second = VAR "c" in
+  let second = SUM [VAR "c"; VAR "x"] in
   let third = TIMES [first; second] in
 
   diff (third, "x");;
+
+let test3() =
+  diff (SUM ([TIMES [CONST 5; TIMES([VAR "x";VAR "x"])]; CONST 1]), "x")
+
+let test4() = 
+  diff (TIMES [CONST 5; TIMES([VAR "x";VAR "x"])], "x")
+let test5() = 
+  diff (TIMES([VAR "x";VAR "x"]), "x")
+
+let test6() = 
+  diff (TIMES [CONST 5; TIMES [VAR "x"; VAR "x"]], "x")
+
+let test7() = 
+  diff ( SUM[CONST 1; VAR "x"; VAR "y"; VAR "z"], "asdf")
+
+let test8() = 
+  diff (SUM [ TIMES [VAR "x"; VAR "y"; ]; TIMES [VAR "y"; POWER ("x", 6) ] ],
+          "y")
+
+let test9() = 
+  diff (TIMES [ POWER( "x", 6); VAR "y"], "y")
