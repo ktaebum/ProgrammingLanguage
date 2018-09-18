@@ -8,103 +8,6 @@ type ae = CONST of int
 
 
 let rec diff ((eq, s): (ae * string)):ae =
-  let rec calculateHighestPower (l:ae list):int =
-    match l with
-    | [] -> 0
-    | CONST _ :: tl -> calculateHighestPower tl
-    | VAR v :: tl ->
-      if v = s then
-        let rest = calculateHighestPower tl in
-        if 1 > rest then 1
-        else rest
-      else calculateHighestPower tl
-    | POWER (v, p) :: tl ->
-      if v = s then
-        let rest = calculateHighestPower tl in
-        if p > rest then p
-        else rest
-      else calculateHighestPower tl
-    | TIMES ll :: tl -> 
-      let p1 = calculateHighestPower ll in
-      let rest = calculateHighestPower tl in
-      if p1 > rest then p1
-      else rest
-    | SUM ll :: tl ->
-      let p1 = calculateHighestPower ll in
-      let rest = calculateHighestPower tl in
-      p1 + rest
-  in
-
-  let compareAEinTIMESList (x:ae) (y:ae):int =
-    (* Compare function for time list sorting 
-     * Const goes first
-     * Single VAR next
-     * POWER last
-     * *)
-    match (x, y) with
-    | (CONST intX, CONST intY) -> intX - intY
-    | (CONST _, _) -> -1
-    | (_, CONST _) -> 1
-    | (VAR stringX, VAR stringY) -> 
-      if stringX = s then 1
-      else (* stringX != s *)
-      if stringY = s then -1
-      else compare stringX stringY
-    | (VAR stringX, POWER (stringY, pY)) -> 
-      if stringX = s then 1
-      else
-      if stringY = s then -1
-      else compare stringX stringY
-    | (VAR stringX, TIMES t) ->
-      let tPower = calculateHighestPower t in
-      if stringX = s then compare 1 tPower
-      else begin 
-        print_int tPower; 
-        compare 0 tPower
-      end
-    | (VAR stringX, SUM _) -> 1
-    | (POWER (stringX, pX), VAR stringY) -> 
-      if stringX = s then 1
-      else
-      if stringY = s then -1
-      else compare stringX stringY
-    | (POWER (stringX, pX), POWER (stringY, pY)) -> 
-      if stringX = s then 1
-      else
-      if stringY = s then -1
-      else compare stringX stringY
-    | (POWER (stringX, pX), TIMES t) -> 
-      let tPower = calculateHighestPower t in
-      if stringX = s then compare pX tPower
-      else compare 0 tPower
-    | (POWER (stringX, pX), SUM _) -> 1
-    | (_, _) -> -1
-  in
-
-  let rec unfoldSUMList (l:ae list):ae list =
-    (* simplify sumlist *)
-    match l with
-    | [] -> []
-    | (CONST 0) :: tl -> unfoldSUMList tl
-    | TIMES t :: tl -> 
-      if (List.length t = 1) then List.hd t :: unfoldSUMList tl
-      else TIMES (List.sort compareAEinTIMESList (unfoldTIMESList t)) :: unfoldSUMList tl
-    | SUM s :: tl -> s @ unfoldSUMList tl
-    | _ -> l
-  and unfoldTIMESList (l:ae list):ae list =
-    (* simplify times list *)
-    match l with
-    | [] -> []
-    | (CONST 0) :: tl -> [CONST 0]
-    | (CONST 1) :: tl -> unfoldTIMESList tl
-    | TIMES t :: tl -> 
-      unfoldTIMESList t @ unfoldTIMESList tl
-    | SUM s :: tl -> 
-      if (List.length s = 1) then List.hd s :: unfoldTIMESList tl
-      else SUM (unfoldSUMList s) :: unfoldTIMESList tl
-    | hd :: tl ->  (hd:: unfoldTIMESList tl)
-  in
-
   match eq with
   | CONST _ -> CONST 0
   | VAR v -> 
@@ -136,10 +39,8 @@ let rec diff ((eq, s): (ae * string)):ae =
         in
         match l1 with
         | [] -> []
-        | hd :: tl -> ((diff (hd, s)) :: (diffTIMES_ l2 fIdx 0)) :: (diffTIMES
-                                                                       tl l2
-                                                                       (fIdx +
-                                                                        1))
+        | hd :: tl -> ((diff (hd, s)) :: (diffTIMES_ l2 fIdx 0)) 
+                      :: (diffTIMES tl l2 (fIdx + 1))
       in
       let unfolded = (diffTIMES seq seq 0) in
       let rec wrapUp (l: ae list list): ae list =
@@ -147,7 +48,7 @@ let rec diff ((eq, s): (ae * string)):ae =
         | [] -> []
         | hd :: tl -> (TIMES hd) :: (wrapUp tl)
       in
-      SUM (unfoldSUMList (wrapUp unfolded))
+      SUM (wrapUp unfolded)
     end
   | SUM seq -> 
     let rec diffSUMList (l:ae list):ae list =
