@@ -60,6 +60,7 @@ let rec diff ((eq, s): (ae * string)):ae =
     else SUM (diffSUMList seq)
 
 
+(*
 let test1 () =
   let first = SUM [POWER ("x", 3); VAR "b"] in
   let second = SUM [ TIMES [CONST 2; POWER ("x", 2)]; VAR "a"] in
@@ -95,3 +96,4 @@ let test8() =
 
 let test9() = 
   diff (TIMES [ POWER( "x", 6); VAR "y"], "y")
+*)
