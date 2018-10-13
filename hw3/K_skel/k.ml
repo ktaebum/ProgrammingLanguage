@@ -332,6 +332,9 @@ struct
       (* get proc of (id list, e, env) *)
       let (args, e', env') = lookup_env_proc env f in
 
+      (* Support recursive call *)
+      let env' = Env.bind env' f (Proc (args, e', env')) in
+
       (* allocate new locations for each id *)
       let rec allocate_locations args = 
         match args with 
@@ -374,6 +377,9 @@ struct
       (* get procedure *)
       let (args, e', env') = lookup_env_proc env f in
 
+      (* support recursive call *)
+      let env' = Env.bind env' f (Proc (args, e', env')) in
+
       (* get locations from args_id *)
       let rec get_locations args_id = 
         match args_id with 
@@ -396,9 +402,88 @@ struct
 
       let env' = bind_locations2args locations args in
       eval mem env' e'
+    | RECORD records ->
+      (* records is type of (id * exp) list *)
+
+      (* parse args and exps *)
+      let args = List.map fst records in 
+      let exps = List.map snd records in
+
+      (* unpacked_exp has (v_1, v_2, ... v_n) and M_n *)
+      let rec calculate_values exps =
+        (* Unpack exp list and calculate its corresponding values 
+         * @param exps: expression list
+         *
+         * Returns: tuple of (values list, latest Memory
+         * Same function of CALLV
+         *)
+        match exps with
+        | [] -> 
+          (* empty list, return ([], current memory *)
+          ([], mem)
+        | hd :: tl ->
+          (* first call recursively to get cumulated memory *)
+          let (values, mem') = calculate_values tl in
+
+          (* eval head *)
+          let (v, mem') = eval mem' env hd in
+          (v :: values, mem')
+      in
+
+      let (values, mem') = calculate_values exps in
+
+      (* allocate new locations for each id *)
+      let rec allocate_locations args = 
+        match args with 
+        | [] -> 
+          (* empty args *)
+          ([], mem')
+        | hd :: tl ->
+          let (locations, mem'') = allocate_locations tl in
+          let (l, mem'') = Mem.alloc mem'' in
+          (l :: locations, mem'') 
+      in
+      let (locations, mem') = allocate_locations args in
+
+      (* store values to location *)
+      let rec store_value2location values locations = 
+        match (values, locations) with 
+        | ([], []) -> mem'
+        | (_ :: _, []) -> raise (Error "InvalidArg")
+        | ([], _ :: _) -> raise (Error "InvalidArg")
+        | (hd_val :: tl_val, hd_loc :: tl_loc) -> 
+          let mem'' = store_value2location tl_val tl_loc in
+          Mem.store mem'' hd_loc hd_val
+      in
+      let mem' = store_value2location values locations in
+
+      let rec bind_locations2args locations args =
+        match (locations, args) with
+        | ([], []) -> env
+        | (_ :: _, []) -> raise (Error "InvalidArg")
+        | ([], _ :: _) -> raise (Error "InvalidArg")
+        | (hd_loc :: tl_loc, hd_arg :: tl_arg) ->
+          let env' = bind_locations2args tl_loc tl_arg in
+          Env.bind env' hd_arg (Addr hd_loc)
+      in
+
+      let env' = bind_locations2args locations args in
+      
+      let find_location id =
+        lookup_env_loc env' id
+      in
+
+      ((Record find_location), mem')
+    | FIELD (e, id) ->
+      let (v, mem') = eval mem env e in
+      (
+        match v with 
+        | Record map -> 
+          (Mem.load mem' (map id), mem')
+        | _ -> raise (Error "Type Error: Not Record")
+      )
     | _ -> failwith "Unimplemented" (* TODO : Implement rest of the cases *)
   (*
- | NUM of int | TRUE | FALSE | UNIT
     | WHILE of exp * exp          (* while loop *)
     | RECORD of (id * exp) list   (* record construction *)
     | FIELD of exp * id           (* access record field *)
