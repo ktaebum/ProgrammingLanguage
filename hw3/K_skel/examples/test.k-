@@ -1,5 +1,7 @@
-let x := 0 in
-let proc add (n) = x := x + n in
-while x < 10 do
-  let proc add_and_write () = add (1); write (x) in
-  add_and_write ()
+let x := false in
+
+let proc factorial (n) =
+  if n = 0 then 1
+  else n * factorial (n - 1)
+in
+write (factorial (10))

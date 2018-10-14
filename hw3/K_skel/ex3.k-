@@ -1,0 +1,65 @@
+let proc leaf (key) = 
+  {key := key, left := unit, right := unit}
+in
+let proc makeLtree (key, tree) = 
+  {key := key, left := tree, right := unit}
+in
+let proc makeRtree (key, tree) = 
+  {key := key, left := unit, right := tree}
+in
+let proc makeTree (key, ltree, rtree) =
+  {key := key, left := ltree, right := rtree}
+in
+let proc isEmpty (tree) =
+  if (tree = unit) then true
+  else false
+in
+let proc rTree (tree) = 
+  tree.right
+in
+let proc lTree (tree) =
+  tree.left
+in
+let proc nodeVal (tree) = 
+  tree.key
+in
+let proc dft (tree) = 
+  if tree = unit then unit
+  else (write (tree.key); dft (tree.left); dft (tree.right))
+in
+
+let proc bft (tree) =
+  (* How to bft without queue?
+   * Refer to https://www.geeksforgeeks.org/level-order-tree-traversal/
+   *)
+  let proc getHeight (tree) =
+    (* calculate height of given tree *)
+    if (tree = unit) then 0
+    else 
+      let leftHeight := (getHeight (tree.left)) in
+      let rightHeight := (getHeight (tree.right)) in
+      if leftHeight < rightHeight then (rightHeight + 1)
+      else (leftHeight + 1)
+  in
+
+  let proc traverseHeight (tree, height) = 
+  if (tree = unit) then unit
+  else
+    if height = 1 then write (tree.key)
+    else
+      (traverseHeight (tree.left, height - 1);
+      traverseHeight (tree.right, height - 1))
+  in
+
+  let height := getHeight (tree) in
+  let h := 1 in
+  while (h < height + 1) do
+    (traverseHeight (tree, h);
+     h := h + 1)
+in
+
+let lt := leaf (1) in
+let rt := leaf (3) in
+let t := makeTree (2, lt, rt) in
+bft (t);
+dft (t)
