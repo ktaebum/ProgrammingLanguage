@@ -217,9 +217,7 @@ struct
       let (l, mem'') = Mem.alloc mem' in
       eval (Mem.store mem'' l v) (Env.bind env x (Addr l)) e2
     | LETF (f, args, e1, e2) -> 
-      (* Idea
-       * Put all ids in args into current environment, and make new environment.
-       *)
+      (* Idea: Put all ids in args into current environment, and make new environment. *)
       let f_env = Env.bind env f (Proc (args, e1, env)) in
       eval mem f_env e2
     | ASSIGN (x, e) ->
