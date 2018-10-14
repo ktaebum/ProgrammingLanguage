@@ -2,6 +2,8 @@
 
 let x := {i := 10, b := true} in
 if x.b then 
+  x.i := 20;
+  x.a := 30;
   write x.i
 else
   write 0

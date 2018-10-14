@@ -297,15 +297,15 @@ struct
     | WHILE (e1, e2) ->
       (* while e1 is true, do e2 *)
       let (v, mem') = eval mem env e1 in
-      let v2bool = value_bool v in
       (
-        match v2bool with 
-       | false ->
+        match v with
+       | Bool false ->
          (* do nothing *)
          (Unit, mem')
-       | true ->
+       | Bool true ->
          let (v1, mem1) = eval mem' env e2 in
-         eval mem1 env e2
+         eval mem1 env (WHILE (e1, e2))
+       | _ -> raise (Error "Type Error: Boolean Required")
       )
     | CALLV (f, exps) ->
       (* unpacked_exp has (v_1, v_2, ... v_n) and M_n *)
@@ -482,16 +482,21 @@ struct
           (Mem.load mem' (map id), mem')
         | _ -> raise (Error "Type Error: Not Record")
       )
-    | _ -> failwith "Unimplemented" (* TODO : Implement rest of the cases *)
-  (*
-    | WHILE of exp * exp          (* while loop *)
-    | RECORD of (id * exp) list   (* record construction *)
-    | FIELD of exp * id           (* access record field *)
-    | ASSIGNF of exp * id * exp   (* assign to record field *)
-     *)
-
-     
-
+    | ASSIGNF (record, field, value) ->
+      (* assign new value to record's field *)
+      let (map, mem') = eval mem env record in
+      let (v, mem'') = eval mem' env value in
+        (match map with
+        | Record map -> 
+          let get_location table id =
+            try table id
+            with Env.Not_bound -> raise (Error "Type Error")
+          in
+            let loc = get_location map field in
+            let mem'' = Mem.store mem'' loc v in
+            (Unit, mem'')
+        | _ -> raise (Error "Type Error: Not Record")
+         )
   let run (mem, env, pgm) = 
     let (v, _ ) = eval mem env pgm in
     v

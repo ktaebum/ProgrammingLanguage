@@ -1,3 +1,5 @@
-let x := 3 in
-let y := 5 in
-write x
+let x := 0 in
+let proc add (n) = x := x + n in
+while x < 10 do
+  let proc add_and_write () = add (1); write (x) in
+  add_and_write ()
