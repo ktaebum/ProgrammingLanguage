@@ -36,8 +36,10 @@ let proc bft (tree) =
     (* calculate height of given tree *)
     if (tree = unit) then 0
     else 
-      let leftHeight := (getHeight (lTree (tree))) in
-      let rightHeight := (getHeight (rTree (tree))) in
+      let leftTree := lTree <tree> in
+      let rightTree := rTree <tree> in
+      let leftHeight := (getHeight <leftTree>) in
+      let rightHeight := (getHeight <rightTree>) in
       if leftHeight < rightHeight then (rightHeight + 1)
       else (leftHeight + 1)
   in
@@ -45,16 +47,18 @@ let proc bft (tree) =
   let proc traverseHeight (tree, height) = 
   if (tree = unit) then unit
   else
-    if height = 1 then write ((nodeVal (tree)))
+    if height = 1 then write ((nodeVal <tree>))
     else
-      (traverseHeight ((lTree (tree)), height - 1);
-      traverseHeight ((rTree (tree)), height - 1))
+      let leftTree := lTree <tree> in
+      let rightTree := rTree <tree> in
+      (traverseHeight (leftTree, height - 1);
+      traverseHeight (rightTree, height - 1))
   in
 
-  let height := getHeight (tree) in
+  let height := getHeight <tree> in
   let h := 1 in
   while (h < height + 1) do
-    (traverseHeight (tree, h);
+    (traverseHeight <tree, h>;
      h := h + 1)
 in
 let tree := makeTree(1, makeTree(2, makeLtree(4, makeTree(7, leaf(8), leaf(9))), makeRtree(5, makeLtree(10, makeRtree(11, makeLtree(12, leaf(13)))))), makeRtree(3, leaf(6))) in
