@@ -202,21 +202,28 @@ struct
     with Env.Not_bound -> raise (Error "Unbound")
 
   let rec eval mem env e =
+
     let getValues mem env exps =
+      (* Given expression list, calculate values and memory *)
       let values = ref [] in
       let rec getValuesWrap mem exps =
         match exps with
         | [] -> mem
         | hd :: tl ->
+          (* eval head item *)
           let (value, mem) = eval mem env hd in
           values := value :: !values;
+
+          (* with calculated mem from head item, go to next item *)
           getValuesWrap mem tl 
       in
       let mem = getValuesWrap mem exps in
+      (* The result of values are stored reversed order *)
       (List.rev !values, mem)
     in
 
     let allocateLocations mem args = 
+      (* Given args id, allocate new locations *)
       let locations = ref [] in
       let rec allocateLocationsWrap mem args =
         match args with
@@ -227,7 +234,8 @@ struct
           allocateLocationsWrap mem tl
       in
       let mem = allocateLocationsWrap mem args in
-      (!locations, mem)
+      (* The result of locations are reversed order *)
+      (List.rev !locations, mem)
     in
 
     let rec storeValuesToLocations values locations mem = 
@@ -241,6 +249,7 @@ struct
     in
 
     let rec getLocations env args =
+      (* From id list, get location in scope of given env *)
       match args with 
       | [] -> []
       | hd :: tl ->
@@ -406,71 +415,27 @@ struct
       let args = List.map fst records in 
       let exps = List.map snd records in
 
-      (* unpacked_exp has (v_1, v_2, ... v_n) and M_n *)
-      let rec calculate_values exps =
-        (* Unpack exp list and calculate its corresponding values 
-         * @param exps: expression list
-         *
-         * Returns: tuple of (values list, latest Memory
-         * Same function of CALLV
-         *)
-        match exps with
-        | [] -> 
-          (* empty list, return ([], current memory *)
-          ([], mem)
-        | hd :: tl ->
-          (* first call recursively to get cumulated memory *)
-          let (values, mem') = calculate_values tl in
+      (* get values of expression *)
+      let (values, mem) = getValues mem env exps in
 
-          (* eval head *)
-          let (v, mem') = eval mem' env hd in
-          (v :: values, mem')
+      (* allocate locations for each field *)
+      let (locations, mem) = allocateLocations mem args in
+
+      (* Store value to allocated locations *)
+      let mem = storeValuesToLocations values locations mem in
+
+      (* New env for record only *)
+      let env = Env.empty in 
+
+      (* Bind record's field to new empty env *)
+      let env = bindLocationsToArgs locations args env in
+
+      let findLocation id =
+        (* location finder *)
+        lookup_env_loc env id
       in
 
-      let (values, mem') = calculate_values exps in
-
-      (* allocate new locations for each id *)
-      let rec allocate_locations args = 
-        match args with 
-        | [] -> 
-          (* empty args *)
-          ([], mem')
-        | hd :: tl ->
-          let (locations, mem'') = allocate_locations tl in
-          let (l, mem'') = Mem.alloc mem'' in
-          (l :: locations, mem'') 
-      in
-      let (locations, mem') = allocate_locations args in
-
-      (* store values to location *)
-      let rec store_value2location values locations = 
-        match (values, locations) with 
-        | ([], []) -> mem'
-        | (_ :: _, []) -> raise (Error "InvalidArg")
-        | ([], _ :: _) -> raise (Error "InvalidArg")
-        | (hd_val :: tl_val, hd_loc :: tl_loc) -> 
-          let mem'' = store_value2location tl_val tl_loc in
-          Mem.store mem'' hd_loc hd_val
-      in
-      let mem' = store_value2location values locations in
-
-      let rec bind_locations2args locations args =
-        match (locations, args) with
-        | ([], []) -> env
-        | (_ :: _, []) -> raise (Error "InvalidArg")
-        | ([], _ :: _) -> raise (Error "InvalidArg")
-        | (hd_loc :: tl_loc, hd_arg :: tl_arg) ->
-          let env' = bind_locations2args tl_loc tl_arg in
-          Env.bind env' hd_arg (Addr hd_loc)
-      in
-
-      let env' = bind_locations2args locations args in
-      
-      let find_location id =
-        lookup_env_loc env' id
-      in
-
-      ((Record find_location), mem')
+      ((Record findLocation), mem)
     | FIELD (e, id) ->
       let (v, mem') = eval mem env e in
       (
