@@ -202,6 +202,61 @@ struct
     with Env.Not_bound -> raise (Error "Unbound")
 
   let rec eval mem env e =
+    let getValues mem env exps =
+      let values = ref [] in
+      let rec getValuesWrap mem exps =
+        match exps with
+        | [] -> mem
+        | hd :: tl ->
+          let (value, mem) = eval mem env hd in
+          values := value :: !values;
+          getValuesWrap mem tl 
+      in
+      let mem = getValuesWrap mem exps in
+      (List.rev !values, mem)
+    in
+
+    let allocateLocations mem args = 
+      let locations = ref [] in
+      let rec allocateLocationsWrap mem args =
+        match args with
+        | [] -> mem
+        | hd :: tl ->
+          let (location, mem) = Mem.alloc mem in
+          locations := location :: !locations;
+          allocateLocationsWrap mem tl
+      in
+      let mem = allocateLocationsWrap mem args in
+      (!locations, mem)
+    in
+
+    let rec storeValuesToLocations values locations mem = 
+      match (values, locations) with 
+      | ([], []) -> mem
+      | (_ :: _, []) -> raise (Error "InvalidArg")
+      | ([], _ :: _) -> raise (Error "InvalidArg")
+      | (hd_val :: tl_val, hd_loc :: tl_loc) ->
+        let mem = Mem.store mem hd_loc hd_val in
+        storeValuesToLocations tl_val tl_loc mem
+    in
+
+    let rec getLocations env args =
+      match args with 
+      | [] -> []
+      | hd :: tl ->
+        (lookup_env_loc env hd) :: (getLocations env tl)
+    in
+
+    let rec bindLocationsToArgs locations args env = 
+      match (locations, args) with
+      | ([], []) -> env
+      | (_ :: _, []) -> raise (Error "InvalidArg")
+      | ([], _ :: _) -> raise (Error "InvalidArg")
+      | (hd_loc :: tl_loc, hd_arg :: tl_arg) ->
+        let env = Env.bind env hd_arg (Addr hd_loc) in
+        bindLocationsToArgs tl_loc tl_arg env
+    in
+
     match e with
     | READ x -> 
       let v = Num (read_int()) in
@@ -311,100 +366,39 @@ struct
        | _ -> raise (Error "Type Error: Boolean Required")
       )
     | CALLV (f, exps) ->
-      (* unpacked_exp has (v_1, v_2, ... v_n) and M_n *)
-      let rec calculate_values exps =
-        (* Unpack exp list and calculate its corresponding values 
-         * @param exps: expression list
-         *
-         * Returns: tuple of (values list, latest Memory
-         *)
-        match exps with
-        | [] -> 
-          (* empty list, return ([], current memory *)
-          ([], mem)
-        | hd :: tl ->
-          (* first call recursively to get cumulated memory *)
-          let (values, mem') = calculate_values tl in
-
-          (* eval head *)
-          let (v, mem') = eval mem' env hd in
-          (v :: values, mem')
-      in
-      let (values, mem') = calculate_values exps in
+      (* calculate values with current env *)
+      let (values, mem) = getValues mem env exps in
 
       (* get proc of (id list, e, env) *)
       let (args, e', env') = lookup_env_proc env f in
 
+      (* allocate new locations *)
+      let (locations, mem) = allocateLocations mem args in
+
       (* Support recursive call *)
-      let env' = Env.bind env' f (Proc (args, e', env')) in
+      let env = Env.bind env' f (Proc (args, e', env')) in
 
-      (* allocate new locations for each id *)
-      let rec allocate_locations args = 
-        match args with 
-        | [] -> 
-          (* empty args *)
-          ([], mem')
-        | hd :: tl ->
-          let (locations, mem'') = allocate_locations tl in
-          let (l, mem'') = Mem.alloc mem'' in
-          (l :: locations, mem'') 
-      in
-      let (locations, mem') = allocate_locations args in
+      (* bind allocated locations to environment *)
+      let env = bindLocationsToArgs locations args env in
 
-      (* store values to location *)
-      let rec store_value2location values locations = 
-        match (values, locations) with 
-        | ([], []) -> mem'
-        | (_ :: _, []) -> raise (Error "InvalidArg")
-        | ([], _ :: _) -> raise (Error "InvalidArg")
-        | (hd_val :: tl_val, hd_loc :: tl_loc) -> 
-          let mem'' = store_value2location tl_val tl_loc in
-          Mem.store mem'' hd_loc hd_val
-      in
-      let mem' = store_value2location values locations in
+      (* store calculated values to new locations *)
+      let mem = storeValuesToLocations values locations mem in
 
-      (* bind new environment from locations and each argument's id *)
-      let rec bind_locations2args locations args= 
-        match (locations, args) with
-        | ([], []) -> env'
-        | (_ :: _, []) -> raise (Error "InvalidArg")
-        | ([], _ :: _) -> raise (Error "InvalidArg")
-        | (hd_loc :: tl_loc, hd_arg :: tl_arg) ->
-          let env' = bind_locations2args tl_loc tl_arg in
-          Env.bind env' hd_arg (Addr hd_loc)
-      in
+      eval mem env e'
+    | CALLR (f, args) ->
+      (* get locations from args with call-time env *)
+      let locations = getLocations env args in
 
-      let env' = bind_locations2args locations args in
-      eval mem' env' e'
-    | CALLR (f, args_id) ->
-      (* get procedure *)
+      (* get procedure from call-time env*)
       let (args, e', env') = lookup_env_proc env f in
 
       (* support recursive call *)
-      let env' = Env.bind env' f (Proc (args, e', env')) in
+      let env = Env.bind env' f (Proc (args, e', env')) in
 
-      (* get locations from args_id *)
-      let rec get_locations args_id = 
-        match args_id with 
-        | [] -> []
-        | hd :: tl ->
-          (lookup_env_loc env hd) :: get_locations tl
-      in
+      (* bind other locations with arguments *)
+      let env = bindLocationsToArgs locations args env in
 
-      let locations = get_locations args_id in
-
-      let rec bind_locations2args locations args =
-        match (locations, args) with
-        | ([], []) -> env'
-        | (_ :: _, []) -> raise (Error "InvalidArg")
-        | ([], _ :: _) -> raise (Error "InvalidArg")
-        | (hd_loc :: tl_loc, hd_arg :: tl_arg) ->
-          let env' = bind_locations2args tl_loc tl_arg in
-          Env.bind env' hd_arg (Addr hd_loc)
-      in
-
-      let env' = bind_locations2args locations args in
-      eval mem env' e'
+      eval mem env e'
     | RECORD records ->
       (* records is type of (id * exp) list *)
 
