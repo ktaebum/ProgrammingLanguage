@@ -1,0 +1,5 @@
+let proc add (x, y) = x + y in
+let proc sub (x, y) = x + x - y in
+let proc sub (x, y) = x - y in
+let z := {a := 3, b := 10} in
+write (sub (10, 5))
