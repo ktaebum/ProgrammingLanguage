@@ -28,6 +28,31 @@ let id2String i =
 
 
 let shoppingList (requires: require list): (id * gift list) list =
+  let trimmedRequires = Hashtbl.create 5 in
+  let rec trimRequires requires =
+    match requires with
+    | [] -> ()
+    | hd :: tl ->
+      let id = fst hd in
+      let conds = snd hd in
+      let currentConds =
+      try
+        Hashtbl.find trimmedRequires id
+      with Not_found -> []
+      in
+      if currentConds = [] then
+        (* not listed conditions *)
+        Hashtbl.add trimmedRequires id conds
+      else
+        (* merge conditions *)
+        Hashtbl.replace trimmedRequires id (conds @ currentConds);
+      trimRequires tl
+  in
+  trimRequires requires;
+
+
+  let requires = Hashtbl.fold (fun key value rlist -> (key, value) :: rlist) trimmedRequires [] in
+
   let effectTable = Hashtbl.create 16 in
 
   let rec parseRequires (requirements: require list) =
@@ -153,234 +178,161 @@ let shoppingList (requires: require list): (id * gift list) list =
 
 
 (*
-let test1 =
-  let requires = [ (A, [Same B])
-          ; (B, [Same A])
-          ; (C, [Same B])
-          ; (D, [])
-          ; (E, [])
-          ] in
-  shoppingList requires
 
-let test2 = 
-  let requires = [ (A, [Except (Same B, [1])])
-          ; (B, [Except (Same A, [2])])
-          ; (C, [Except (Same B, [3])])
-          ; (D, [])
-          ; (E, [])
-          ] in
-  shoppingList requires
+let idtest (h) = 
+   match h with 
+   (id, gift) -> 
+   match id with 
+   | A -> "A" 
+   | B -> "B" 
+   | C -> "C" 
+   | D -> "D" 
+   | E -> "E" 
 
-let test3 =
-  let requires = [ (A, [Same B; Same C])
-          ; (B, [Same A; Same C])
-          ; (C, [Same A; Same B])
-          ; (D, [])
-          ; (E, [])
-          ] in
-  shoppingList requires
+let gifttest (h) = 
+   match h with 
+   | (id, gift) -> gift 
 
-let test4 = 
-  let requires = [ (A, [Items [1]])
-          ; (B, [Items [2]])
-          ; (C, [Items [3]])
-          ; (D, [])
-          ; (E, [])
-          ] in
-  shoppingList requires
+let rec printlisttest (gift) = 
+   match gift with 
+   | [] -> "]" 
+   | h::t -> (string_of_int h) ^ printlisttest(t) 
 
-let test5 =
-  let requires = [ (A, [Items [1;2]; Common (Same B, Same C)])
-          ; (B, [Common (Same C, Items [2;3])])
-          ; (C, [Items [1]; Except (Same A, [3])])
-          ; (D, [])
-          ; (E, [])
-          ] in
-  shoppingList requires
+let rec printfinaltest (result) = ( 
+   match result with 
+   | [] -> () 
+   | h::t -> print_string ("(" ^ idtest(h) ^ ",[" ^ printlisttest(gifttest(h)) ^");") 
 
-let test6 =
-  let requires = [ (A, [])
-          ; (B, [])
-          ; (C, [])
-          ; (D, [])
-          ; (E, [])
-          ] in
-  shoppingList requires
+) 
 
-let test7 = 
-  let requires = [ (A, [Items [1;2;3]])
-          ; (B, [Same A])
-          ; (C, [Same A])
-          ; (D, [Same A])
-          ; (E, [Same A])
-          ] in
-  shoppingList requires
+let check1 = [(A, Items[1;2]::[])] 
+let check2 = [(A, Items[1;2]::Items[3;4]::[])] 
+let check3 = [(A,Items[1;2]::Items[1;4]::[]);(C,Items[3;4]::[])] 
+let check4 = [(A,Items[1;2]::Items[1;4]::[]);(B, Same A::[]);(C,Items[3;4]::[])] 
+let check5 = [(A,Items[1;2]::Items[1;4]::[]);(B, Same C::[]);(C,Items[3;4]::[])] 
+let check6 = [(A,Same B::[]);(B, Same C::[]);(C, Same D::[]);(D, Same E::[]);(E, Same A::[])] 
+let check7 = [(A, Items [1;2;3]::[]); (B,Same A::Items [4]::[]); (C, []); (D, []); (E, [Same D])] 
 
-let test8 = 
-  let requires = [ (A, [Items [1;2;3;4]])
-          ; (B, [Items [2;3;4;5]])
-          ; (C, [Common (Same A, Same B)])
-          ; (D, [Items [3;4;5;6]])
-          ; (E, [Common (Same C, Same D)])
-          ] in
-	shoppingList requires
+let check8 = [(A, [Items[1;2]]); (B, [Same A])] 
+let check9 = [(A, [Items[1;2]]); (B, [Same C]);(C, [Items[2;3]])] 
+let check10 = [(A, [Items[1;2]]); (B, [Items[4];Same C]);(C, [Items[2;3]])] 
+let check11 = [(A, [Items[1;2]]); (B, [Same C;Items[4]]);(C, [Items[2;3]])] 
+let check12 = [(A, [Items[1;2]; Same C]); (B, [Same A]);(C, [Items[2;3]])] 
+let check13 = [(A, [Except (Items[1;2;3], [1;2])])] 
+let check14 = [(A, [Items[1;2;3]]);(B, [Except (Same A, [1])])] 
+let check15 = [(A, [Common (Items[1;2], Items[2;3])])] 
+let check16 = [(A, [Items [5;6]; Common(Items [1;2], Items [2;3])])] 
 
+let check17 = [(A, [Items[1;2;3;4;5]]);(B,[Same D]); (C,[Common (Common (Except (Items [1;2;3;4;5], [3;4]), Same B), Same A)]);(D, [Items [1;3;5;7;9]])] 
 
-let test9 = 
-	let requires = [ (A, [Items [1;2;3;4;5;6;7]])
-          ; (B, [Except (Same A, [1;4])])
-          ; (C, [Except (Same B, [2;3])])
-          ; (D, [Except (Same C, [5;6])])
-          ; (E, [Except (Same D, [7])])
-          ] in
-  shoppingList requires
+let _ = 
+if (shoppingList (check1) = [(A,[1;2]);(B,[]);(C,[]);(D,[]);(E,[])])          then print_endline("1") else printfinaltest(shoppingList(check1)); 
+if (shoppingList (check2) = [(A,[1;2;3;4]);(B,[]);(C,[]);(D,[]);(E,[])])       then print_endline("2") else printfinaltest(shoppingList(check2)); 
+if (shoppingList (check3) = [(A,[1;2;4]);(B,[]);(C,[3;4]);(D,[]);(E,[])])       then print_endline("3") else printfinaltest(shoppingList(check3)); 
+if (shoppingList (check4) = [(A,[1;2;4]);(B,[1;2;4]);(C,[3;4]);(D,[]);(E,[])])    then print_endline("4") else printfinaltest(shoppingList(check4)); 
+if (shoppingList (check5) = [(A,[1;2;4]);(B,[3;4]);(C,[3;4]);(D,[]);(E,[])])    then print_endline("5") else printfinaltest(shoppingList(check5)); 
+if (shoppingList (check6) = [(A,[]);(B,[]);(C,[]);(D,[]);(E,[])])             then print_endline("6") else printfinaltest(shoppingList(check6)); 
+if (shoppingList (check7) = [(A,[1;2;3]);(B,[1;2;3;4]);(C,[]);(D,[]);(E,[])])   then print_endline("7") else printfinaltest(shoppingList(check7)); 
+if (shoppingList (check8) = [(A,[1;2]);(B,[1;2]);(C,[]);(D,[]);(E,[])])       then print_endline("8") else printfinaltest(shoppingList(check8)); 
+if (shoppingList (check9) = [(A,[1;2]);(B,[2;3]);(C,[2;3]);(D,[]);(E,[])])       then print_endline("9") else printfinaltest(shoppingList(check9)); 
+if (shoppingList (check10) = [(A,[1;2]);(B,[2;3;4]);(C,[2;3]);(D,[]);(E,[])])    then print_endline("10") else printfinaltest(shoppingList(check10)); 
+if (shoppingList (check11) = [(A,[1;2]);(B,[2;3;4]);(C,[2;3]);(D,[]);(E,[])])    then print_endline("11") else printfinaltest(shoppingList(check11)); 
+if (shoppingList (check12) = [(A,[1;2;3]);(B,[1;2;3]);(C,[2;3]);(D,[]);(E,[])]) then print_endline("12") else printfinaltest(shoppingList(check12)); 
+if (shoppingList (check13) = [(A,[3]);(B,[]);(C,[]);(D,[]);(E,[])])          then print_endline("13") else printfinaltest(shoppingList(check13)); 
+if (shoppingList (check14) = [(A,[1;2;3]);(B,[2;3]);(C,[]);(D,[]);(E,[])])       then print_endline("14") else printfinaltest(shoppingList(check14)); 
+if (shoppingList (check15) = [(A,[2]);(B,[]);(C,[]);(D,[]);(E,[])])          then print_endline("15") else printfinaltest(shoppingList(check15)); 
+if (shoppingList (check16) = [(A,[2;5;6]);(B,[]);(C,[]);(D,[]);(E,[])])       then print_endline("16") else printfinaltest(shoppingList(check16)); 
+if (shoppingList (check17) = [(A,[1;2;3;4;5]);(B,[1;3;5;7;9]);(C,[1;5]);(D,[1;3;5;7;9]);(E,[])]) then print_endline("17") else printfinaltest(shoppingList(check17)); 
 
-let test10 = 
-  let requires = [ (A, [Items [1; 2; 3]; Except (Items [5; 6; 7], [6]); Common (Same (D), Same (E))])
-          ; (B, [Common (Same (A), Same (B)); Common (Same (B), Same (C)); Except (Same (D), [9])])
-          ; (C, [Common (Same (B), Same (C)); Except (Same (E), [1; 6]); Common (Same (A), Same (D))])
-          ; (D, [Items [4; 5; 6; 7; 8; 9; 10]; Same (B); Same (C)])
-          ; (E, [Except (Same (A), [3]); Items [9; 10; 11]; Common (Common (Same (B), Same (D)), Items [1; 2; 3; 4; 5; 6; 7])])
-          ] in
-  shoppingList requires
+(*********************************************************************************) 
 
-let test11 =
-  let requires = [ (A, [Items [1;2;3]])
-          ; (B, [Items [2;3;4]])
-          ; (C, [Items [3;4;1]])
-          ; (D, [Items [4;1;2]])
-          ; (E, [Items [1;2;3;1;2;3]])
-					] in
-	shoppingList requires
+let emptyL = [(A, []); (B, []); (C, []); (D, []); (E, [])] in 
+assert ((shoppingList []) = emptyL); 
+print_endline "a"; 
 
-let test12 = 
-let requires = [ (A, [Items [1;2;3]])
-          ; (B, [Same A])
-          ; (C, [Same A; Items[1;2]])
-          ; (D, [Same A; Items[4]])
-          ; (E, [Same D])
-          ] in
-shoppingList requires
+assert ((shoppingList [ 
+(A, []); (B, []); (C, []); (D, []); (E, []); 
+]) = emptyL); 
+print_endline "b"; 
 
-let test13 =
-let requires = [ (A, [Common (Items [1;2;3], Items [2;1;3])])
-          ; (B, [Common (Items [2;1;3], Items [5;6;1;4;2;3])])
-          ; (C, [Common (Items [1;2;3], Items [4;5;6])])
-          ; (D, [Common (Items [3;2;1], Items [1])])
-          ; (E, [Common (Items [1;2;3], Items [])])
-          ] in
-shoppingList requires
+assert ((shoppingList [ 
+(A, [Same B]); (B, [Same C]); (C, [Same D]); (D, [Same E]); (E, [Same A]); 
+]) = emptyL); 
+print_endline "c"; 
 
-let test14 = 
-let requires = [ (B, [Common (Items [2;1;3], Items [5;6;1;4;2;3])])
-          ; (E, [Common (Items [], Items [])])
-          ; (D, [Common (Items [1], Items [1])])
-          ] in
-shoppingList requires
+assert ((shoppingList [ 
+(A, [Items [1;2;3]]); (B, [Items [2;3;4]]); 
+(C, [Items [3;4;1]]); (D, [Items [4;1;2]]); 
+(E, [Items [1;2;3;1;2;3]]); 
+]) = [(A, [1; 2; 3]); (B, [2; 3; 4]); (C, [1; 3; 4]); (D, [1; 2; 4]); (E, [1; 2; 3])]); 
+print_endline "d"; 
 
-let test15 = 
-let requires = [ (A, [Except (Items [3;2;1], [3;2;1])])
-          ; (B, [Except (Items [2;1;3], [])])
-          ; (C, [Except (Items [2;1;3], [1;2;3;4;5;6])])
-          ; (D, [Except (Items [], [2;1;3])])
-          ; (E, [Except (Items [], [])])
-          ] in
-shoppingList requires
+assert ((shoppingList [ 
+(A, [Items [1;2;3]]); 
+(B, [Same A]); 
+(C, [Same A; Items[1;2]]); 
+(D, [Same A; Items[4]]); 
+(E, [Same D]); 
+]) = [(A, [1; 2; 3]); (B, [1; 2; 3]); (C, [1; 2; 3]); (D, [1; 2; 3; 4]); (E, [1; 2; 3; 4])]); 
+print_endline "e"; 
 
-let test16 =
-let requires = [ (A, [Common (Common (Same B, Same C), Common (Same D, Same E))])
-          ; (B, [Common (Same C, Common (Same D, Except (Same E, [5])))])
-          ; (C, [Same D; Items[7;8]])
-          ; (D, [Except (Same E, [1;2;3])])
-          ; (E, [Items [1;2;3;4;5]])
-          ] in
-shoppingList requires
+assert ((shoppingList [ 
+(A, [Common (Items [1;2;3], Items [2;1;3])]); 
+(B, [Common (Items [2;1;3], Items [5;6;1;4;2;3])]); 
+(C, [Common (Items [1;2;3], Items [4;5;6])]); 
+(D, [Common (Items [3;2;1], Items [1])]); 
+(E, [Common (Items [1;2;3], Items [])]); 
+]) = [(A, [1; 2; 3]); (B, [1; 2; 3]); (C, []); (D, [1]); (E, [])]); 
+print_endline "f"; 
 
-let test17 =
-  let requires = [ (A, [Same B; Same C])
-            ; (B, [Except (Same C, [1;2;3]); Same D])
-            ; (C, [Items [1;2;3]; Items [3;4;5]; Common (Same A, Items [6;7])])
-            ; (D, [Same E])
-            ; (E, [Same D; Items[6;8]])
-            ] in
-  shoppingList requires
+assert ((shoppingList [ 
+(B, [Common (Items [2;1;3], Items [5;6;1;4;2;3])]); 
+(E, [Common (Items [], Items [])]); 
+(D, [Common (Items [1], Items [1])]); 
+]) = [(A, []); (B, [1; 2; 3]); (C, []); (D, [1]); (E, [])]); 
+print_endline "g"; 
 
-let test18 = 
-let requires = [ (A, [Common (Same B, Common (Except (Items [1;2;3;4;5], [1;3;5]), Same C)); Items [2;4;8]])
-          ; (B, [Except (Except (Except (Same A, [1]),[1;2]),[3]); Items [3;6;9]])
-          ; (C, [Same A; Same B; Same D; Same E])
-          ; (D, [Items [10]; Common (Same A, Same D); Items [5]])
-          ; (E, [Common (Same C, Common (Same A, Common (Same D, Same B)))])
-          ] in
-shoppingList requires
+assert ((shoppingList [ 
+(A, [Except (Items [3;2;1], [3;2;1])]); 
+(B, [Except (Items [2;1;3], [])]); 
+(C, [Except (Items [2;1;3], [1;2;3;4;5;6])]); 
+(D, [Except (Items [], [2;1;3])]); 
+(E, [Except (Items [], [])]); 
+]) = [(A, []); (B, [1; 2; 3]); (C, []); (D, []); (E, [])]); 
+print_endline "h"; 
 
+assert ((shoppingList [ 
+(A, [Common (Common (Same B, Same C), Common (Same D, Same E))]); 
+(B, [Common (Same C, Common (Same D, Except (Same E, [5])))]); 
+(C, [Same D; Items[7;8]]); 
+(D, [Except (Same E, [1;2;3])]); 
+(E, [Items [1;2;3;4;5]]); 
+]) = [(A, [4]); (B, [4]); (C, [4; 5; 7; 8]); (D, [4; 5]); (E, [1; 2; 3; 4; 5])]); 
+print_endline "i"; 
 
-let test19 =
-let requires = [ (A, [Items [1;2;3;1;2;3]; Same D; Items [1;2;3;4]])
-          ; (D, [Items [5;5;5;5;5]])
-          ; (E, [Except (Items [1;2;3;1;2;3], [1;2;3])])
-          ] in
-shoppingList requires
+assert ((shoppingList [ 
+(A, [Same B; Same C]); 
+(B, [Except (Same C, [1;2;3]); Same D]); 
+(C, [Items [1;2;3]; Items [3;4;5]; Common (Same A, Items [6;7])]); 
+(D, [Same E]); 
+(E, [Same D; Items[6;8]]); 
+]) = [(A, [1; 2; 3; 4; 5; 6; 8]); (B, [4; 5; 6; 8]); (C, [1; 2; 3; 4; 5; 6]); (D, [6; 8]); (E, [6; 8])]); 
+print_endline "j"; 
 
-let test20 =
-let requires = [ (A, [Same B])
-          ; (B, [Same C])
-          ; (C, [Same D])
-          ; (D, [Same E])
-          ; (E, [Items [3;1;2]])
-          ] in
-shoppingList requires
-
-let test21 =
-let requires = [ (A, [Items [3;1;2]])
-          ; (C, [Same B])
-          ; (B, [Same A])
-          ; (E, [Same D])
-          ; (D, [Same C])
-          ] in
-shoppingList requires
-
-let test22 =
-let requires = [ (A, [Same B])
-          ; (B, [Same A])
-          ; (C, [])
-          ; (D, [])
-          ; (E, [])
-          ] in
-shoppingList requires
-
-let test23 = 
-let requires = [ (A, [Items [1]; Same B])
-          ; (B, [Items [1]; Same C])
-          ; (C, [Items [1]; Same A])
-          ] in
-shoppingList requires
-
-let test24 = 
-let requires = [ (A, [Items [1]; Same B])
-          ; (B, [Same C])
-          ; (C, [Same B])
-          ; (D, [Same A; Common (Same B, Same C)])
-          ; (E, [Same A; Same D])
-          ] in
-shoppingList requires
-
-let test25 =
-let requires = [ (A, [Items [1]; Except (Same B, [1])])
-          ; (B, [Items [2]; Except (Same C, [2])])
-          ; (C, [Items [3]; Except (Same D, [3])])
-          ; (D, [Items [4]; Except (Same E, [4])])
-          ; (E, [Items [5]; Except (Same A, [5])])
-          ] in
-shoppingList requires
-
-
-let test26 =
-let requires = [ (A, [Items [1; 2]; Common (Same B, Same C)])
-          ; (B, [Common (Same C, Items [2;3])])
-          ; (C, [Items [1]; Except (Same A, [3])])
-          ; (D, [Common (Same A, Same B)])
-          ; (E, [Common (Same A, Same C)])
-          ] in
-shoppingList requires
-*)
+assert ((shoppingList [ 
+(A, [Common (Same B, Common (Except (Items [1;2;3;4;5], [1;3;5]), Same C)); Items [2;4;8]]); 
+(B, [Except (Except (Except (Same A, [1]),[1;2]),[3]); Items [3;6;9]]); 
+(C, [Same A; Same B; Same D; Same E]); 
+(D, [Items [10]; Common (Same A, Same D); Items [5]]); 
+(E, [Common (Same C, Common (Same A, Common (Same D, Same B)))]) 
+]) = [(A, [2; 4; 8]); (B, [3; 4; 6; 8; 9]); (C, [2; 3; 4; 5; 6; 8; 9; 10]); (D, [5; 10]); (E, [])]); 
+print_endline "k"; 
+assert ((shoppingList [ 
+(A, [Items [1;2;3;1;2;3]]); 
+(D, [Items [5;5;5;5;5]]); 
+(A, [Same D]); 
+(E, [Except (Items [1;2;3;1;2;3], [1;2;3])]); 
+(A, [Items [1;2;3;4]]); 
+]) = [(A, [1; 2; 3; 4; 5]); (B, []); (C, []); (D, [5]); (E, [])]); 
+print_endline "l";
+   *)
