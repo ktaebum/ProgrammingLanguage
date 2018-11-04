@@ -9,8 +9,15 @@ module Translator = struct
 
   (* TODO : complete this function  *)
   let rec trans : K.program -> Sm5.command = function
+  (* Simple Arithmetic *)
     | K.NUM i -> [Sm5.PUSH (Sm5.Val (Sm5.Z i))]
     | K.ADD (e1, e2) -> trans e1 @ trans e2 @ [Sm5.ADD]
+    | K.MUL (e1, e2) -> trans e1 @ trans e2 @ [Sm5.MUL]
+    | K.SUB (e1, e2) -> trans e1 @ trans e2 @ [Sm5.SUB]
+    | K.DIV (e1, e2) -> trans e1 @ trans e2 @ [Sm5.DIV]
+    | K.EQUAL (e1, e2) -> trans e1 @ trans e2 @ [Sm5.EQ]
+    | K.LESS (e1, e2) -> trans e1 @ trans e2 @ [Sm5.LESS]
+    | K.NOT (e) -> trans e @ [Sm5.NOT]
 
   (* Binding *)
     | K.LETV (x, e1, e2) ->
@@ -36,9 +43,21 @@ module Translator = struct
 
   (* Call Function *)
     | K.CALLV (f, arg) ->
+      (* arg is expression *)
       [Sm5.PUSH (Sm5.Id f)] @
       trans arg @
       [Sm5.MALLOC; Sm5.CALL]
+    | K.CALLR (f, arg) ->
+      (* arg is variable *)
+      [Sm5.PUSH (Sm5.Id f)] @
+      [Sm5.PUSH (Sm5.Id arg); Sm5.LOAD] @
+      [Sm5.PUSH (Sm5.Id arg)] @
+      [Sm5.CALL]
+
+  (* Conditional *)
+    | K.IF (cond, trueE, falseE) ->
+      trans cond @
+      [Sm5.JTR (trans trueE, trans falseE)]
     | _ -> failwith "Unimplemented"
       
 
