@@ -47,10 +47,6 @@ module Translator = struct
       [Sm5.PUT] @
       [Sm5.PUSH (Sm5.Id anonymousArg); Sm5.LOAD] @
       [Sm5.UNBIND; Sm5.POP] 
-      (*
-      trans e @
-      [Sm5.PUT]
-         *)
 
   (* Variable Related *)
     | K.VAR x -> [Sm5.PUSH (Sm5.Id x); Sm5.LOAD]
@@ -60,14 +56,20 @@ module Translator = struct
       [Sm5.PUSH (Sm5.Id x); Sm5.LOAD]
 
   (* Execution *)
-    | K.SEQ (e1, e2) -> trans e1 @ trans e2
+    | K.SEQ (e1, e2) -> 
+      let e1Eval = trans e1 in
+      e1Eval @
+      trans e2
 
   (* Call Function *)
     | K.CALLV (f, arg) ->
       (* arg is expression *)
+      (* let returnValue = "#return" in *)
+      (* [Sm5.MALLOC; Sm5.BIND returnValue; Sm5.PUSH (Sm5.Id returnValue); Sm5.STORE] @ *)
       [Sm5.PUSH (Sm5.Id f)] @ 
       [Sm5.PUSH (Sm5.Id f)] @ 
       trans arg @
+      (* [Sm5.PUSH (Sm5.Id returnValue); Sm5.LOAD] @ *)
       [Sm5.MALLOC; Sm5.CALL]
     | K.CALLR (f, arg) ->
       (* arg is variable address *)
@@ -89,11 +91,29 @@ module Translator = struct
       let anonymousBound = "#I" in
       let anonymousIter = "#i" in
       let functionBody = 
-        (* update i and evaluate loop *)
+        (* check condition *)
         [Sm5.PUSH (Sm5.Id anonymousIter); Sm5.LOAD] @
-        [Sm5.PUSH (Sm5.Id i); Sm5.STORE] @
-        trans e @
+        [Sm5.PUSH (Sm5.Id anonymousBound); Sm5.LOAD] @
+        [Sm5.PUSH (Sm5.Val (Sm5.Z 1))] @
+        [Sm5.ADD] @
+        [Sm5.LESS] @
+        [Sm5.JTR (
+            (* if true *)
+            (* update i and evaluate loop *)
+            [Sm5.PUSH (Sm5.Id anonymousIter); Sm5.LOAD] @
+            [Sm5.PUSH (Sm5.Id i); Sm5.STORE] @
+            trans e @
+            [Sm5.PUSH (Sm5.Id anonymousIter); Sm5.LOAD] @
+            [Sm5.PUSH (Sm5.Val (Sm5.Z 1))] @
+            [Sm5.ADD] @
+            [Sm5.PUSH (Sm5.Id anonymousIter); Sm5.STORE] @
+            trans (K.CALLR (anonymousFunc, anonymousIter))
+            (* increment anonymousIter *)
+            ,
+            trans K.UNIT)]
+      in
 
+      (*
         (* check whether can go next step *)
         [Sm5.PUSH (Sm5.Id anonymousIter); Sm5.LOAD] @
         [Sm5.PUSH (Sm5.Val (Sm5.Z 1))] @
@@ -112,6 +132,7 @@ module Translator = struct
             (* Equal Case *)
             trans K.UNIT)]
       in
+         *)
       trans e1 @
       [Sm5.MALLOC; Sm5.BIND anonymousIter; Sm5.PUSH (Sm5.Id anonymousIter); Sm5.STORE] @
       trans e2 @ 
@@ -119,18 +140,29 @@ module Translator = struct
       [Sm5.PUSH (Sm5.Fn (anonymousIter, [Sm5.BIND anonymousFunc] @
                             functionBody @
                             [Sm5.UNBIND; Sm5.POP])); Sm5.BIND anonymousFunc] @
+      trans (K.CALLR (anonymousFunc, anonymousIter)) @
+      [Sm5.UNBIND; Sm5.POP] @
+      [Sm5.UNBIND; Sm5.POP] @
+      [Sm5.UNBIND; Sm5.POP] @
+      trans K.UNIT
+
+      (*
       [Sm5.PUSH (Sm5.Id anonymousIter); Sm5.LOAD] @
       [Sm5.PUSH (Sm5.Id anonymousBound); Sm5.LOAD] @
       [Sm5.PUSH (Sm5.Val (Sm5.Z 1))] @
       [Sm5.ADD] @
       [Sm5.LESS] @
-      [Sm5.JTR ([Sm5.PUSH (Sm5.Id anonymousIter); Sm5.LOAD] @
-                [Sm5.PUSH (Sm5.Id anonymousIter); Sm5.STORE] @
-                trans (K.CALLR (anonymousFunc, anonymousIter))  
-                , trans K.UNIT)] @ 
+      [Sm5.JTR (trans (K.CALLR (anonymousFunc, anonymousIter)), 
+                [Sm5.UNBIND; Sm5.POP] @ 
+                [Sm5.UNBIND; Sm5.POP] @ 
+                [Sm5.UNBIND; Sm5.POP] @
+                trans K.UNIT)] 
+      *)
+      (*
       [Sm5.UNBIND; Sm5.POP] @ 
       [Sm5.UNBIND; Sm5.POP] @ 
       [Sm5.UNBIND; Sm5.POP]
+      *)
     | K.WHILE (cond, e) ->
       let anonymousFunc = "#f" in
       let anonymousArg = "#arg" in
