@@ -1,6 +1,5 @@
 (*
  * SNU 4190.310 Programming Languages 
- * Homework "SM5 Garbage Collector"
  *)
 
 module type SM5 = 
@@ -204,15 +203,67 @@ struct
   (* TODO : Complete this function.
    * Implement the GC algorithm introduced in class material.
    *)
+  let mem_print m =
+    let entry_to_str (l, v) =
+      Printf.printf "(%d, %d)\n" (fst l) (snd l)
+    in
+    List.map entry_to_str m
+
   let malloc_with_gc s m e c k =
     if List.length m < mem_limit then
+      (* not reached limit *)
       let _ = loc_id := !loc_id + 1 in
       ((!loc_id, 0), m)
+      
     else
+      (* reach limit *)
       let _ = reachable_locs := [] in
       (* TODO : Add the code that marks the reachable locations.
        * let _ = ... 
        *)
+      let rec traverse_environment e = 
+        let rec traverse_record r =
+          (* r is a (string * loc) list (record list) *)
+          match r with
+          | [] -> ()
+          | hd :: tl -> 
+            traverse_location (snd hd);
+            traverse_record tl
+        and traverse_location l = 
+          let _ = reachable_locs := l :: (!reachable_locs) in
+          let look_up = load l m in
+          match look_up with
+          | L l' -> traverse_location l'
+          | R r -> traverse_record r
+          | _ -> ()
+        in
+        match e with
+        | [] -> ()
+        | hd :: tl ->
+          (
+            match hd with 
+            | (name, Proc (_, _, e')) -> 
+              traverse_environment tl
+            | (name, Loc l) -> 
+              let all_memories = List.filter (fun (base, _) -> (fst base) = (fst l)) m in
+              let locations = List.map fst all_memories in
+              List.iter traverse_location locations;
+              traverse_environment tl
+          )
+      in
+
+      let rec traverse_continuation k =
+        match k with
+        | [] -> ()
+        | hd :: tl ->
+          traverse_environment (snd hd);
+          traverse_continuation tl
+      in
+
+      let _ = traverse_environment e in
+      let _ = traverse_continuation k in
+
+      (* not member *)
       let new_m = List.filter (fun (l, _) -> List.mem l !reachable_locs) m in
       if List.length new_m < mem_limit then
         let _ = loc_id := !loc_id + 1 in
@@ -220,6 +271,7 @@ struct
         (new_l, new_m)
       else
         raise GC_Failure
+
 
   let malloc () = 
     let _ = loc_id := !loc_id + 1 in
