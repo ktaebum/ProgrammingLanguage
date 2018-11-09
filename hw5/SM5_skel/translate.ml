@@ -128,6 +128,7 @@ module Translator = struct
       let anonymousArg = "#arg" in
       let functionBody = 
         trans e @
+        [Sm5.POP] @
         trans cond @
         [Sm5.JTR (
             trans (K.CALLR (anonymousFunc, anonymousArg)),
