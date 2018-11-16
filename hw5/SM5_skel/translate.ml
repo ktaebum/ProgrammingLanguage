@@ -46,7 +46,7 @@ module Translator = struct
       [Sm5.PUSH (Sm5.Id anonymousArg); Sm5.LOAD] @
       [Sm5.PUT] @
       [Sm5.PUSH (Sm5.Id anonymousArg); Sm5.LOAD] @
-      [Sm5.UNBIND; Sm5.POP] 
+      [Sm5.UNBIND; Sm5.POP]
 
   (* Variable Related *)
     | K.VAR x -> [Sm5.PUSH (Sm5.Id x); Sm5.LOAD]
@@ -103,12 +103,12 @@ module Translator = struct
             trans e @
             (* Don't save internal for loop results *)
             [Sm5.POP] @
+            (* increment anonymousIter *)
             [Sm5.PUSH (Sm5.Id anonymousIter); Sm5.LOAD] @
             [Sm5.PUSH (Sm5.Val (Sm5.Z 1))] @
             [Sm5.ADD] @
             [Sm5.PUSH (Sm5.Id anonymousIter); Sm5.STORE] @
             trans (K.CALLR (anonymousFunc, anonymousIter))
-            (* increment anonymousIter *)
             ,
             trans K.UNIT)]
       in

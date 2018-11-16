@@ -221,15 +221,21 @@ struct
       (* TODO : Add the code that marks the reachable locations.
        * let _ = ... 
        *)
-      let rec traverse_environment e = 
-        let rec traverse_record r =
-          (* r is a (string * loc) list (record list) *)
-          match r with
-          | [] -> ()
-          | hd :: tl -> 
-            traverse_location (snd hd);
-            traverse_record tl
-        and traverse_location l = 
+      let rec traverse_record r =
+        (* r is a (string * loc) list *)
+        match r with
+        | [] -> ()
+        | hd :: tl ->
+          traverse_location (snd hd);
+          traverse_record tl
+      and traverse_location l =
+        let collect_array l =
+          (* loc is tuple of (base, offset).
+           * The loc with same base and different offset could be interpreted as array
+           *)
+          List.filter (fun (location, _) -> (fst location) = (fst l)) m
+        in
+        let traverse_single_location l = 
           let _ = reachable_locs := l :: (!reachable_locs) in
           let look_up = load l m in
           match look_up with
@@ -237,19 +243,36 @@ struct
           | R r -> traverse_record r
           | _ -> ()
         in
+        let locations = List.map fst (collect_array l) in
+          List.iter traverse_single_location locations
+      in
+
+      let rec traverse_stack s =
+        (* stack value can be value, proc, (var x loc), (var x proc) *)
+        match s with
+        | [] -> ()
+        | hd :: tl ->
+          (
+            match hd with 
+            | V (L l) -> traverse_location l
+            | V (R r) -> traverse_record r
+            | V (_) -> ()
+            | P (_, _, e') -> traverse_environment e'
+            | M (_, (Loc l)) -> traverse_location l
+            | M (_, (Proc (_, _, e'))) -> traverse_environment e'
+          );
+          traverse_stack tl
+      and traverse_environment e = 
+        (* traverse environment *)
         match e with
         | [] -> ()
         | hd :: tl ->
           (
             match hd with 
-            | (name, Proc (_, _, e')) -> 
-              traverse_environment tl
-            | (name, Loc l) -> 
-              let all_memories = List.filter (fun (base, _) -> (fst base) = (fst l)) m in
-              let locations = List.map fst all_memories in
-              List.iter traverse_location locations;
-              traverse_environment tl
-          )
+            | (name, Proc (_, _, e')) -> traverse_environment e'
+            | (name, Loc l) -> traverse_location l
+          );
+          traverse_environment tl
       in
 
       let rec traverse_continuation k =
@@ -262,6 +285,7 @@ struct
 
       let _ = traverse_environment e in
       let _ = traverse_continuation k in
+      let _ = traverse_stack s in
 
       (* not member *)
       let new_m = List.filter (fun (l, _) -> List.mem l !reachable_locs) m in
