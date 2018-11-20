@@ -8,7 +8,7 @@ let continuationFunc = "#contFunc"
 let continuationArg = "#contArg"
 let continuationVar = "#contVar"
 let continuationOffset = 10
-let continuationTime = ref 0
+let continuationCount = ref 0
 
 let trans_v : Sm5.value -> Sonata.value = function
   | Sm5.Z z  -> Sonata.Z z
@@ -24,18 +24,23 @@ let rec trans_obj : Sm5.obj -> Sonata.obj = function
   | Sm5.Fn (arg, command) -> 
     (* current command is Sm5.cmd list. convert it into Sonata cmd list*)
     let command = 
+      [Sonata.BIND continuationFunc] @
+      (* stack has currentFunction :: s *)
+      (trans' command) @
+      (* Current problem: unbind order *)
+
       [Sonata.PUSH (Sonata.Id arg)] @ (* get location of arg *)
       [Sonata.PUSH (Sonata.Val (Sonata.Z continuationOffset))] @
       [Sonata.ADD] @
       [Sonata.LOAD] @
-      [Sonata.BIND continuationFunc] @
-      (trans' command) @
+      (* stack has function return value :: s *)
       [Sonata.PUSH (Sonata.Id continuationFunc)] @
       [Sonata.UNBIND] @
       [Sonata.POP] @
       [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @
       [Sonata.MALLOC] @
       [Sonata.CALL] in
+    let _ = continuationCount := !continuationCount - 1 in
     Sonata.Fn (arg, command)
 
 (* TODO : complete this function *)
@@ -44,7 +49,7 @@ and trans' : Sm5.command -> Sonata.command = function
   | Sm5.POP :: cmds -> Sonata.POP :: (trans' cmds)
   | Sm5.STORE :: cmds -> Sonata.STORE :: (trans' cmds)
   | Sm5.LOAD :: cmds -> Sonata.LOAD :: (trans' cmds)
-  | Sm5.JTR (c1, c2) :: cmds ->  [Sonata.JTR (trans' c1, trans' c2)]
+  | Sm5.JTR (c1, c2) :: cmds ->  Sonata.JTR (trans' c1, trans' c2) :: (trans' cmds)
   | Sm5.MALLOC :: cmds -> Sonata.MALLOC :: (trans' cmds)
   | Sm5.BOX z :: cmds -> Sonata.BOX z :: (trans' cmds)
   | Sm5.UNBOX id :: cmds -> Sonata.UNBOX id :: (trans' cmds)
@@ -60,18 +65,26 @@ and trans' : Sm5.command -> Sonata.command = function
      * View (C, E) as new function
      *)
     let getContinuation = 
-      if (!continuationTime == 0) then
+      if (!continuationCount == 0) then
         (* Main function *)
-        let _ = continuationTime := 1 in
         Sonata.Fn (continuationArg, trans' cmds)
       else
-        (* Not main function *)
+        (* Not main function 
+         * Invariant: must have continuationFunc
+         * *)
+        Sonata.Fn (
+          continuationArg, 
+          (trans' cmds) @
+          [Sonata.PUSH (Sonata.Id continuationFunc)] @
+          [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @
+          [Sonata.MALLOC] @
+          [Sonata.CALL] 
+                  )
     in
+    let _ = continuationCount := !continuationCount + 1 in
 
-    let _ = if (cmds <> []) then continuationTime := !continuationTime + 1 in
-    let _ = Printf.printf "cont = %d\n" !continuationTime in
     let anonymousArg = "#temp" in
-    let continuation = Sonata.Fn (continuationArg, trans' cmds) in
+    let continuation = getContinuation in
     [Sonata.BIND anonymousArg] @ 
     [Sonata.PUSH (Sonata.Id anonymousArg)] @
     [Sonata.PUSH continuation] @
@@ -88,6 +101,7 @@ and trans' : Sm5.command -> Sonata.command = function
     (* Now the stack becomes l :: v :: (x, C', E') :: (x, C', E') :: S 
      * In memory, l + offset has continuation function*)
 
+    (* Unbind anonymousArg *)
     [Sonata.UNBIND] @
     [Sonata.POP] @
 
