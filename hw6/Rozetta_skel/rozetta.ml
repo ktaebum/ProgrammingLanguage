@@ -7,12 +7,10 @@
 let continuationFunc = "#contFunc"
 let continuationArg = "#contArg"
 let continuationVar = "#contVar"
+let previousCont = "#previousCont" 
+let functionCall = "#functionCall"
+
 let continuationOffset = 10
-let continuationCount = ref 0
-let currentFunctionArg = ref ""
-let isMainFunction = ref true
-let previousCont = ref [1]
-let printZero = [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @ [Sonata.PUT]
 
 let rec callPreviousConts conts = 
   (* For all previous continuation functions, call *)
@@ -42,8 +40,23 @@ let rec trans_obj : Sm5.obj -> Sonata.obj = function
 
     (* current command is Sm5.cmd list. convert it into Sonata cmd list*)
     let command = 
+      (* update previousCont *)
+      [Sonata.PUSH (Sonata.Id arg)] @ (* get location of arg *)
+      [Sonata.PUSH (Sonata.Val (Sonata.Z continuationOffset))] @
+      [Sonata.ADD] @
+      [Sonata.LOAD] @
+      [Sonata.PUSH (Sonata.Id previousCont)] @
+      [Sonata.STORE] @
       (* execute real function Body *)
       (trans' command) @
+      (* decrement function call *)
+      [Sonata.PUSH (Sonata.Id functionCall)] @
+      [Sonata.LOAD] @
+      [Sonata.PUSH (Sonata.Val (Sonata.Z 1))] @
+      [Sonata.SUB] @
+      [Sonata.PUSH (Sonata.Id functionCall)] @
+      [Sonata.STORE] @
+
       [Sonata.PUSH (Sonata.Id arg)] @ (* get location of arg *)
       [Sonata.PUSH (Sonata.Val (Sonata.Z continuationOffset))] @
       [Sonata.ADD] @
@@ -82,16 +95,46 @@ and trans' : Sm5.command -> Sonata.command = function
      *)
 
     let getContinuation = 
-      if (currentFunctionArg = "") then
-      else
-      let currentContinuation = Sonata.Fn (continuationArg, trans' cmds) in
+      let currentContinuation = 
+        Sonata.Fn (continuationArg, 
+                   trans' cmds @ 
+                   [Sonata.PUSH (Sonata.Id previousCont)] @
+                   [Sonata.LOAD] @
+                   [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @
+                   [Sonata.MALLOC] @
+                   [Sonata.CALL]) in
       currentContinuation
     in
     let anonymousArg = "#temp" in
     let continuation = getContinuation in
-    [Sonata.BIND anonymousArg] @ 
-    [Sonata.PUSH (Sonata.Id anonymousArg)] @
-    [Sonata.PUSH continuation] @
+
+    (* load functionCall *)
+    [Sonata.PUSH (Sonata.Id functionCall)] @
+    [Sonata.LOAD] @
+
+    (* check whether this is main function or not *)
+    [Sonata.PUSH (Sonata.Val (Sonata.Z 1))] @
+    [Sonata.LESS] @
+    [Sonata.JTR (
+      (* main function *)
+      [Sonata.BIND anonymousArg] @ 
+      [Sonata.PUSH (Sonata.Id anonymousArg)] @
+      [Sonata.PUSH (Sonata.Fn (continuationArg, trans' cmds))]
+      ,
+      (* non main function *)
+      [Sonata.PUSH (Sonata.Id functionCall)] @
+      [Sonata.LOAD] @
+      [Sonata.PUT] @
+      [Sonata.BIND anonymousArg] @ 
+      [Sonata.PUSH (Sonata.Id anonymousArg)] @
+      [Sonata.PUSH (Sonata.Fn (continuationArg, 
+                   trans' cmds @ 
+                   [Sonata.PUSH (Sonata.Id previousCont)] @
+                   [Sonata.LOAD] @
+                   [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @
+                   [Sonata.MALLOC] @
+                   [Sonata.CALL]))] 
+    )] @
     [Sonata.PUSH (Sonata.Id anonymousArg)] @
     (* Now the stack becomes l :: f :: l :: v :: (x, C', E') :: (x, C', E') :: S *)
 
@@ -109,6 +152,15 @@ and trans' : Sm5.command -> Sonata.command = function
     [Sonata.UNBIND] @
     [Sonata.POP] @
 
+
+    (* increment functionCall *)
+    [Sonata.PUSH (Sonata.Id functionCall)] @
+    [Sonata.LOAD] @
+    [Sonata.PUSH (Sonata.Val (Sonata.Z 1))] @
+    [Sonata.ADD] @
+    [Sonata.PUSH (Sonata.Id functionCall)] @
+    [Sonata.STORE] @
+
     [Sonata.CALL]
 
   (* | Sm5.CALL :: cmds -> failwith "TODO : fill in here" *)
@@ -123,4 +175,22 @@ and trans' : Sm5.command -> Sonata.command = function
 
 (* TODO : complete this function *)
 let trans : Sm5.command -> Sonata.command = fun command ->
-  trans' command
+
+  (* for counting function call depth (recursive call or nested function) *)
+  [Sonata.MALLOC] @
+  [Sonata.BIND functionCall] @
+  [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @
+  [Sonata.PUSH (Sonata.Id functionCall)] @
+  [Sonata.STORE] @
+
+  (* Bind previousCont variable and store empty function *)
+  [Sonata.MALLOC] @
+  [Sonata.BIND previousCont] @
+  [Sonata.PUSH (Sonata.Fn (continuationArg, []))] @
+  [Sonata.PUSH (Sonata.Id previousCont)] @
+  [Sonata.STORE] @
+  trans' command @
+  [Sonata.UNBIND] @
+  [Sonata.POP] @
+  [Sonata.UNBIND] @
+  [Sonata.POP]
