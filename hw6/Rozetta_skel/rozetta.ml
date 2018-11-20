@@ -9,6 +9,22 @@ let continuationArg = "#contArg"
 let continuationVar = "#contVar"
 let continuationOffset = 10
 let continuationCount = ref 0
+let currentFunctionArg = ref ""
+let isMainFunction = ref true
+let previousCont = ref [1]
+let printZero = [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @ [Sonata.PUT]
+
+let rec callPreviousConts conts = 
+  (* For all previous continuation functions, call *)
+  match conts with
+  | [] -> []
+  | func :: others ->
+    [Sonata.PUSH func] @
+    [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @
+    [Sonata.MALLOC] @
+    [Sonata.CALL] @
+    callPreviousConts others
+
 
 let trans_v : Sm5.value -> Sonata.value = function
   | Sm5.Z z  -> Sonata.Z z
@@ -22,25 +38,21 @@ let rec trans_obj : Sm5.obj -> Sonata.obj = function
   | Sm5.Val v -> Sonata.Val (trans_v v)
   | Sm5.Id id -> Sonata.Id id
   | Sm5.Fn (arg, command) -> 
+    (* These commands run in environment E' *)
+
     (* current command is Sm5.cmd list. convert it into Sonata cmd list*)
     let command = 
-      [Sonata.BIND continuationFunc] @
-      (* stack has currentFunction :: s *)
+      (* execute real function Body *)
       (trans' command) @
-      (* Current problem: unbind order *)
-
       [Sonata.PUSH (Sonata.Id arg)] @ (* get location of arg *)
       [Sonata.PUSH (Sonata.Val (Sonata.Z continuationOffset))] @
       [Sonata.ADD] @
       [Sonata.LOAD] @
-      (* stack has function return value :: s *)
-      [Sonata.PUSH (Sonata.Id continuationFunc)] @
-      [Sonata.UNBIND] @
-      [Sonata.POP] @
       [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @
       [Sonata.MALLOC] @
       [Sonata.CALL] in
-    let _ = continuationCount := !continuationCount - 1 in
+    (* let _ = continuationCount := !continuationCount - 1 in *)
+    (* let _ = Printf.printf "at fn cont = %d\n" !continuationCount in *)
     Sonata.Fn (arg, command)
 
 (* TODO : complete this function *)
@@ -59,30 +71,22 @@ and trans' : Sm5.command -> Sonata.command = function
   | Sm5.PUT ::cmds -> Sonata.PUT :: (trans' cmds)
   | Sm5.CALL :: cmds -> 
     (*
+     * These commands run in environment E 
+     *)
+
+    (* 
      * Invariant: Stack is composed of
      *  l :: v :: (x, C' E') :: (x, C', E') :: S 
      *
-     * View (C, E) as new function
+     * View (C, E) as a new function
      *)
-    let getContinuation = 
-      if (!continuationCount == 0) then
-        (* Main function *)
-        Sonata.Fn (continuationArg, trans' cmds)
-      else
-        (* Not main function 
-         * Invariant: must have continuationFunc
-         * *)
-        Sonata.Fn (
-          continuationArg, 
-          (trans' cmds) @
-          [Sonata.PUSH (Sonata.Id continuationFunc)] @
-          [Sonata.PUSH (Sonata.Val (Sonata.Z 0))] @
-          [Sonata.MALLOC] @
-          [Sonata.CALL] 
-                  )
-    in
-    let _ = continuationCount := !continuationCount + 1 in
 
+    let getContinuation = 
+      if (currentFunctionArg = "") then
+      else
+      let currentContinuation = Sonata.Fn (continuationArg, trans' cmds) in
+      currentContinuation
+    in
     let anonymousArg = "#temp" in
     let continuation = getContinuation in
     [Sonata.BIND anonymousArg] @ 
