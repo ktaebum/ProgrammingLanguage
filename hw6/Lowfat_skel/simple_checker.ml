@@ -163,7 +163,7 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
     let (gamma', etype) = exp2typ gamma e1 in
 
     (* For debugging *)
-    let _ = Printf.printf "Expression type is %s\n" (typ2string etype) in
+    (* let _ = Printf.printf "Expression type is %s\n" (typ2string etype) in *)
 
     let gamma' = bindType gamma' (x, etype) in
     exp2typ gamma' e2
@@ -177,7 +177,7 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
     let gamma' = bindType gamma' (x, etype) in
 
     (* For debugging *)
-    let _ = Printf.printf "Expression type is %s\n" (typ2string (gamma' f)) in
+    (* let _ = Printf.printf "Expression type is %s\n" (typ2string (gamma' f)) in *)
 
     exp2typ gamma' e2
 
@@ -214,9 +214,9 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
   | M.PAIR (e1, e2) ->
     let (gamma', type1) = exp2typ gamma e1 in
     (* For debugging *)
-    let _ = Printf.printf "First pair is %s\n" (typ2string type1) in
+    (* let _ = Printf.printf "First pair is %s\n" (typ2string type1) in *)
     let (gamma'', type2) = exp2typ gamma' e2 in
-    let _ = Printf.printf "Second pair is %s\n" (typ2string type1) in
+    (* let _ = Printf.printf "Second pair is %s\n" (typ2string type1) in *)
     (gamma'', TPair (type1, type2))
   | M.FST e ->
     let (gamma', type1) = exp2typ gamma e in
