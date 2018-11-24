@@ -9,7 +9,6 @@ open Pp
 type var = string
 
 let count = ref 0
-let debug = true
 
 let new_var () =
   let _ = count := !count +1 in
@@ -31,7 +30,7 @@ let rec typ2string t =
   | TInt -> "int"
   | TBool -> "bool"
   | TString -> "string"
-  | TPair (t1, t2) -> "Pair ( " ^ (typ2string t1) ^ ", " ^ (typ2string t2)
+  | TPair (t1, t2) -> "Pair (" ^ (typ2string t1) ^ ", " ^ (typ2string t2) ^ ")"
   | TLoc t1 -> "Loc " ^ (typ2string t1)
   | TFun (t1, t2) -> "Fun " ^ (typ2string t1) ^ " -> " ^ (typ2string t2)
   | TVar v -> "Var " ^ v
@@ -60,6 +59,13 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
     (
       match (type1, type2) with
       | (TVar x1, TVar x2) ->
+        (* Keep variable as variable
+         * At this case, both variables can be
+         *  String
+         *  Boolean
+         *  Integer
+         *  Location
+         *)
         (* let gamma'' = bindType gamma'' (x1, TAlpha) in *)
         (* let gamma'' = bindType gamma'' (x2, TAlpha) in *)
         (gamma'', TBool)
@@ -74,6 +80,9 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
       | (TInt, TInt)
       | (TBool, TBool)
       | (TString, TString)
+        (* TODO:
+         * Does recursive check for pointer needed?
+         *)
       | (TLoc _, TLoc _) -> (gamma'', TBool)
       | (_, _) -> raise (M.TypeError "Invalid equivalent compare")
     )
@@ -84,6 +93,7 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
     (
       match (type1, type2) with
       | (TVar x1, TVar x2) ->
+        (* Variable must be boolean *)
         let gamma'' = bindType gamma'' (x1, TBool) in
         let gamma'' = bindType gamma'' (x2, TBool) in
         (gamma'', TBool)
@@ -100,6 +110,7 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
     (
       match (type1, type2) with
       | (TVar x1, TVar x2) -> 
+        (* Variable must be integer *)
         let gamma'' = bindType gamma'' (x1, TInt) in
         let gamma'' = bindType gamma'' (x2, TInt) in
         (gamma'', TInt)
@@ -125,9 +136,18 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
     let (gamma', type1) = exp2typ gamma e1 in
     (match type1 with
      | TFun (t1, t2) ->
-       let (gamma'', type2) = exp2typ gamma' e2 in
-       if (type2 = t1) then (gamma'', t2)
-       else raise (M.TypeError "Function App type mismatch")
+       (
+         match (t1, t2) with
+         | (TVar x, TVar y) -> 
+           (* it is same as alpha -> alpha *)
+           if (x = y) then exp2typ gamma' e2
+           else raise (M.TypeError "Function App type mismatch")
+         | (TVar x, _) -> (gamma', t2)
+         | _ -> 
+           let (gamma'', type2) = exp2typ gamma' e2 in
+           if (type2 = t1) then (gamma'', t2)
+           else raise (M.TypeError "Function App type mismatch")
+       )
      | _ -> raise (M.TypeError "First type of APP must be function")
     )
     
@@ -136,12 +156,29 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
     let (gamma', etype) = exp2typ gamma' e in
 
     (* For debugging *)
-    let _ = Printf.printf "This Function Type is %s -> %s\n" (typ2string (gamma' x)) (typ2string etype) in
+    (* let _ = Printf.printf "This Function Type is %s -> %s\n" (typ2string (gamma' x)) (typ2string etype) in *)
 
     (gamma', TFun (gamma' x, etype))
   | M.LET ((M.VAL (x, e1)), e2) ->
     let (gamma', etype) = exp2typ gamma e1 in
+
+    (* For debugging *)
+    let _ = Printf.printf "Expression type is %s\n" (typ2string etype) in
+
     let gamma' = bindType gamma' (x, etype) in
+    exp2typ gamma' e2
+  | M.LET ((M.REC (f, x, e1)), e2) ->
+    (*
+     * 1. BIND f that it takes x as arg
+     *)
+    let gamma' = bindType gamma (f, TFun (TVar x, TVar x)) in
+    let gamma' = bindType gamma' (x, TVar x) in
+    let (gamma', etype) = exp2typ gamma' e1 in
+    let gamma' = bindType gamma' (x, etype) in
+
+    (* For debugging *)
+    let _ = Printf.printf "Expression type is %s\n" (typ2string (gamma' f)) in
+
     exp2typ gamma' e2
 
   (* I/O Related *)
@@ -176,7 +213,10 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
   (* Pair Related *)
   | M.PAIR (e1, e2) ->
     let (gamma', type1) = exp2typ gamma e1 in
+    (* For debugging *)
+    let _ = Printf.printf "First pair is %s\n" (typ2string type1) in
     let (gamma'', type2) = exp2typ gamma' e2 in
+    let _ = Printf.printf "Second pair is %s\n" (typ2string type1) in
     (gamma'', TPair (type1, type2))
   | M.FST e ->
     let (gamma', type1) = exp2typ gamma e in
@@ -193,7 +233,9 @@ let rec exp2typ (gamma: gamma) (exp: M.exp) =
       | _ -> raise (M.TypeError "Not a pair")
     )
 
-  | M.SEQ (_, e) -> exp2typ gamma e
+  | M.SEQ (e1, e2) -> 
+    let (gamma', _ ) = exp2typ gamma e1 in
+    exp2typ gamma' e2
 
 
 
