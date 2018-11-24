@@ -206,15 +206,12 @@ struct
          let env' = env @+ (f, Closure (RecFun (f, x, e1), env)) in
          eval env' mem e2
        | VAL (x, e1) ->
-         let (v1, mem') = eval env mem e1 in
-         let env' = env @+ (x, v1) in
-         eval env' mem' e2
-         (* eval env mem (APP (FN (x, e2), e1))  *)
+         eval env mem (APP (FN (x, e2), e1))
         )
     | MALLOC e -> 
       let (v, mem') = eval env mem e in
       let (saveLoc, (nextLoc, mem')) = malloc (!currentLoc, mem') in 
-      let _  = currentLoc := !currentLoc + 1 in
+      let _ = currentLoc := nextLoc in
       let mem' = store mem' (saveLoc, v) in
       (Loc saveLoc, mem')
     | ASSIGN (e1, e2) ->
