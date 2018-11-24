@@ -129,7 +129,7 @@ let lookup_record x r =
 
 let load l m =
   try List.assoc l m with
-  Not_found -> raise (Error ("Uninitialized location : %s" ^ (loc_to_str l)))
+    Not_found -> raise (Error ("Uninitialized location : %s" ^ (loc_to_str l)))
 
 let store l sv m =
   if List.mem_assoc l m then
@@ -163,8 +163,8 @@ let rec step = function
   | (s, m, e, PUSH (Val v) :: c) -> (V v :: s, m, e, c)
   | (s, m, e, PUSH (Id x) :: c) ->
     (match lookup_env x e with
-    | Loc l -> (V (L l) :: s, m, e, c)
-    | Proc p -> (P p :: s, m, e, c))
+     | Loc l -> (V (L l) :: s, m, e, c)
+     | Proc p -> (P p :: s, m, e, c))
   | (s, m, e, PUSH (Fn (x, c')) :: c) -> (P (x, c',e)::s, m, e, c)
   | (w :: s, m, e, POP :: c) -> (s, m, e, c)
   | (V (L l) :: sv :: s, m, e, STORE :: c) -> (s, store l sv m, e, c)
@@ -220,20 +220,20 @@ let rec run_helper (s, m, e, c) =
   | [] -> ()
   | _ -> 
     let _ = if !debug_mode then
-      let _ = print_endline "====== Machine state ======" in
-      let _ = print_newline() in
-      let _ = print_endline "***** Command *****" in
-      let _ = print_endline (command_to_str "" c) in
-      let _ = print_newline() in
-      let _ = print_endline "***** Stack *****" in
-      let _ = print_endline (stack_to_str s) in
-      let _ = print_newline() in
-      let _ = print_endline "***** Environment *****" in
-      let _ = print_endline (env_to_str "" e) in
-      let _ = print_newline() in
-      let _ = print_endline "***** Memory *****" in
-      let _ = print_endline (mem_to_str m) in
-      print_newline()
+        let _ = print_endline "====== Machine state ======" in
+        let _ = print_newline() in
+        let _ = print_endline "***** Command *****" in
+        let _ = print_endline (command_to_str "" c) in
+        let _ = print_newline() in
+        let _ = print_endline "***** Stack *****" in
+        let _ = print_endline (stack_to_str s) in
+        let _ = print_newline() in
+        let _ = print_endline "***** Environment *****" in
+        let _ = print_endline (env_to_str "" e) in
+        let _ = print_newline() in
+        let _ = print_endline "***** Memory *****" in
+        let _ = print_endline (mem_to_str m) in
+        print_newline()
     in
     run_helper (step (s, m, e, c))
 

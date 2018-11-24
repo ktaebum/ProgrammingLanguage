@@ -113,7 +113,7 @@ and trans' : Sm5.command -> Sonata.command = function
     [Sonata.LOAD] @
     [Sonata.ADD] @
     [Sonata.STORE] @
-    
+
     (* increment functionCall *)
     [Sonata.PUSH (Sonata.Id functionCall)] @
     [Sonata.LOAD] @
