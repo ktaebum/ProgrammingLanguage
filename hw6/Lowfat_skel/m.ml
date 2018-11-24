@@ -134,7 +134,15 @@ struct
     | AND -> (fun (v1,v2) -> Bool (getBool v1 && getBool v2))
     | OR ->  (fun (v1,v2) -> Bool (getBool v1 || getBool v2))
     | EQ -> (* TODO : implement this *)
-      failwith "Unimplemented"
+      (fun (v1, v2) ->
+         match (v1, v2) with
+         | (Int i1, Int i2) -> Bool (i1 = i2)
+         | (String s1, String s2) -> Bool (s1 = s2)
+         | (Bool b1, Bool b2) -> Bool (b1 = b2)
+         | (Loc l1, Loc l2) -> Bool (l1 = l2)
+         | (_, _) -> raise (TypeError "not a valid equaility compare")
+      )
+
 
   let rec printValue =
     function 
@@ -142,6 +150,8 @@ struct
     | Bool b -> print_endline (string_of_bool b)
     | String s -> print_endline s
     | _ -> raise (TypeError "WRITE operand is not int/bool/string")
+
+  let currentLoc = ref 0
 
   let rec eval env mem exp = 
     match exp with
@@ -155,9 +165,11 @@ struct
       let (v2, m'') = eval env m' e2 in
       let (c, env') = getClosure v1 in
       (match c with 
-      | Fun (x, e) -> eval (env' @+ (x, v2)) m'' e
+      | Fun (x, e) -> 
+        eval (env' @+ (x, v2)) m'' e
       | RecFun (f, x, e) ->  (* TODO : implement this *)
-        failwith "Unimplemented")
+        let env' = env' @+ (x, v2) in
+        eval (env' @+ (f, v1)) m'' e)
     | IF (e1, e2, e3) ->
       let (v1, m') = eval env mem e1 in
       eval env m' (if getBool v1 then e2 else e3)
@@ -183,7 +195,41 @@ struct
       let (v, m') = eval env mem e in
       (snd (getPair v), m')
     (* TODO : complete the rest of interpreter *)
-    | _ -> failwith "Unimplemented"
+    | LET (declare, e2) -> 
+      (match declare with 
+       | REC (f, x, e1) -> 
+         (*
+          * f: function name
+          * x: arg name
+          * e1: function body
+          *)
+         let env' = env @+ (f, Closure (RecFun (f, x, e1), env)) in
+         eval env' mem e2
+       | VAL (x, e1) ->
+         eval env mem (APP (FN (x, e2), e1))
+        )
+    | MALLOC e -> 
+      let (v, mem') = eval env mem e in
+      let (saveLoc, (nextLoc, mem')) = malloc (!currentLoc, mem') in 
+      let _ = currentLoc := nextLoc in
+      let mem' = store mem' (saveLoc, v) in
+      (Loc saveLoc, mem')
+    | ASSIGN (e1, e2) ->
+      (* assign e2 into e1 *)
+      let (saveLoc, mem') = eval env mem e1 in
+      let saveLoc = getLoc saveLoc in
+      let (v, mem'') = eval env mem' e2 in
+      let mem'' = store mem'' (saveLoc, v) in
+      (v, mem'')
+    | BANG e -> 
+      let (saveLoc, mem') = eval env mem e in
+      let saveLoc = getLoc saveLoc in
+      let v = load mem' saveLoc in
+      (v, mem')
+    | SEQ (e1, e2) ->
+      let (_, mem1) = eval env mem e1 in
+      let (v2, mem2) = eval env mem1 e2 in
+      (v2, mem2)
 
   let emptyEnv = (fun x -> raise (RunError ("unbound id: " ^ x)))
 
