@@ -53,7 +53,7 @@ let
       in write p; print3 (x.2) end
 in
   print4 data; write "sort";
-  print4 (sort4 data) 
+  print4 (sort4 data)
 end 
 
 

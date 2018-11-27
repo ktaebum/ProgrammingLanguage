@@ -97,7 +97,7 @@ struct
   (* f @+ (x, v)              f[x |-> v]
    * store M (l, v)           M[l |-> v]
    * load M l                M(l)
-   *)
+  *)
   let (@+) f (x, v) = (fun y -> if y = x then v else f y)
   let store (l, m) p = (l, m @+ p)        
   let load (_, m) l = m l                
@@ -130,18 +130,18 @@ struct
 
   let op2fn =
     function ADD -> (fun (v1,v2) -> Int (getInt v1 + getInt v2))
-    | SUB -> (fun (v1,v2) -> Int (getInt v1 - getInt v2))
-    | AND -> (fun (v1,v2) -> Bool (getBool v1 && getBool v2))
-    | OR ->  (fun (v1,v2) -> Bool (getBool v1 || getBool v2))
-    | EQ -> (* TODO : implement this *)
-      (fun (v1, v2) ->
-         match (v1, v2) with
-         | (Int i1, Int i2) -> Bool (i1 = i2)
-         | (String s1, String s2) -> Bool (s1 = s2)
-         | (Bool b1, Bool b2) -> Bool (b1 = b2)
-         | (Loc l1, Loc l2) -> Bool (l1 = l2)
-         | (_, _) -> raise (TypeError "not a valid equaility compare")
-      )
+           | SUB -> (fun (v1,v2) -> Int (getInt v1 - getInt v2))
+           | AND -> (fun (v1,v2) -> Bool (getBool v1 && getBool v2))
+           | OR ->  (fun (v1,v2) -> Bool (getBool v1 || getBool v2))
+           | EQ -> (* TODO : implement this *)
+             (fun (v1, v2) ->
+                match (v1, v2) with
+                | (Int i1, Int i2) -> Bool (i1 = i2)
+                | (String s1, String s2) -> Bool (s1 = s2)
+                | (Bool b1, Bool b2) -> Bool (b1 = b2)
+                | (Loc l1, Loc l2) -> Bool (l1 = l2)
+                | (_, _) -> raise (TypeError "not a valid equaility compare")
+             )
 
 
   let rec printValue =
@@ -165,11 +165,11 @@ struct
       let (v2, m'') = eval env m' e2 in
       let (c, env') = getClosure v1 in
       (match c with 
-      | Fun (x, e) -> 
-        eval (env' @+ (x, v2)) m'' e
-      | RecFun (f, x, e) ->  (* TODO : implement this *)
-        let env' = env' @+ (x, v2) in
-        eval (env' @+ (f, v1)) m'' e)
+       | Fun (x, e) -> 
+         eval (env' @+ (x, v2)) m'' e
+       | RecFun (f, x, e) ->  (* TODO : implement this *)
+         let env' = env' @+ (x, v2) in
+         eval (env' @+ (f, v1)) m'' e)
     | IF (e1, e2, e3) ->
       let (v1, m') = eval env mem e1 in
       eval env m' (if getBool v1 then e2 else e3)
@@ -207,7 +207,7 @@ struct
          eval env' mem e2
        | VAL (x, e1) ->
          eval env mem (APP (FN (x, e2), e1))
-        )
+      )
     | MALLOC e -> 
       let (v, mem') = eval env mem e in
       let (saveLoc, (nextLoc, mem')) = malloc (!currentLoc, mem') in 
@@ -241,5 +241,5 @@ struct
 end
 
 module type M_TypeChecker = sig
-    val check: M.exp -> M.types
+  val check: M.exp -> M.types
 end

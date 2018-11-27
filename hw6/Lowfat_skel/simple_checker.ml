@@ -9,247 +9,335 @@ open Pp
 type var = string
 
 let count = ref 0
+let wcount = ref 0
+let ecount = ref 0
 
+
+(* For easy debugging, seperate var *)
 let new_var () =
   let _ = count := !count +1 in
   "x_" ^ (string_of_int !count)
 
-type typ =
+type typ = 
   | TInt
   | TBool
-  | TString
+  | TString 
   | TPair of typ * typ
   | TLoc of typ
   | TFun of typ * typ
   | TVar of var
   (* Modify, or add more if needed *)
 
+let newVar () = 
+  let v = new_var() in
+  TVar v
+
 (* For Debugging *)
-let rec typ2string t =
-  match t with
-  | TInt -> "int"
-  | TBool -> "bool"
-  | TString -> "string"
-  | TPair (t1, t2) -> "Pair (" ^ (typ2string t1) ^ ", " ^ (typ2string t2) ^ ")"
-  | TLoc t1 -> "Loc " ^ (typ2string t1)
-  | TFun (t1, t2) -> "Fun " ^ (typ2string t1) ^ " -> " ^ (typ2string t2)
-  | TVar v -> "Var " ^ v
+let  rec typ2string: typ -> string = fun typ ->
+  match typ with
+  | TInt -> "Int"
+  | TBool -> "Bool"
+  | TString -> "String"
+  | TLoc l -> "Location of (" ^ (typ2string l) ^ ")"
+  | TVar v -> "Unknown variable " ^ v
+  | TFun (arg, ret) -> "Function of (" ^ (typ2string arg) ^ " -> " ^ (typ2string ret) ^ ")"
+  | TPair (t1, t2) -> "Pair of (" ^ (typ2string t1) ^ ", " ^ (typ2string t2) ^ ")"
 
 
-(* Setup Gamma *)
-type gamma = var -> typ
-let bindType gamma (x, t) =
-  (* at gamma g, convert all occurence of x into t *)
-  fun y -> if (y) = (x) then t else gamma y
-let lookup gamma x = gamma x
-let emptyGamma = (fun x -> raise (M.RunError ("unbound id to type " ^ x)))
+(* Below helper functions are got from previous year's course material *)
+(* Gamma (type env) related *)
+(* type gamma = M.id -> typ *)
+type gamma = (M.id * typ) list
+(* bind x -> t into gamma *)
+let (@+) gamma (x, t) = fun y -> if (y = x) then t else gamma y
+let emptyGamma = (fun x -> raise (M.TypeError ("Not binded variable" ^ x)))
+let find env id = 
+  (* return typ of given id *)
+  try
+    let (_, t) = List.find (fun v -> (fst v) = id) env in
+    t
+  with Not_found -> raise (M.TypeError ("Not binded variable" ^ id))
 
-let rec exp2typ (gamma: gamma) (exp: M.exp) =
+
+(* Substitution Related 
+   Substitution: function that substitutes type variable into real type
+*)
+type subst = typ -> typ
+let emptySubst: subst = fun t -> t
+let makeSubst: var -> typ -> subst = fun x t ->
+  (* Make substitution of Var x -> type t *)
+  let rec subs t' = 
+    match t' with
+    | TVar x' -> 
+      (* if x' is x, our target 
+         Substitute TVar x' as t*)
+      if (x = x') then t else t'
+    | TPair (t1, t2) -> TPair (subs t1, subs t2)
+    | TLoc t'' -> TLoc (subs t'')
+    | TFun (t1, t2) -> TFun (subs t1, subs t2)
+    | TInt
+    | TBool
+    | TString -> t'
+  in subs
+(* Merge two substitution *)
+let (@@) s1 s2 = (fun t -> s1 (s2 t)) 
+let substEnv : subst -> gamma -> gamma = fun subs tyenv ->
+  List.map (fun (x, tyscm) -> (x, subs tyscm)) tyenv
+
+
+(* TODO:
+    Make unification algorithm
+
+    Reference 
+    http://www.cs.cornell.edu/courses/cs3110/2011fa/supplemental/lec26-type-inference/type-inference.htm
+    Class Material 5-1.pdf
+
+    Unification Rule
+    unification (var, t) =  var -> t
+    unification (t, var) = var -> t
+    unification (Loc t1, Loc t2) = unification t1 t2
+    unification (Pair (t1, t2), Pair (t3, t4)) = 
+      unification t1 t3 && unification t2 t4 && merge subst
+*)
+
+let rec hasAlpha: var -> typ -> bool = fun alpha tau ->
+  (* Check occurence of alpha \in tau *)
+  match tau with 
+  | TVar x -> x = alpha
+  | TPair (t1, t2) 
+  | TFun (t1, t2) ->
+    (hasAlpha alpha t1) || (hasAlpha alpha t2)
+  | TString
+  | TBool
+  | TInt -> false
+  | TLoc t -> hasAlpha alpha t
+
+
+
+let rec unification: typ -> typ -> subst = fun t1 t2 ->
+  (* get two typ and return subst *)
+  if (t1 = t2) then emptySubst
+  else (
+    match (t1, t2) with 
+    | (TVar alpha, tau)  -> 
+      if (hasAlpha alpha tau) then raise (M.TypeError "alpha in tau")
+      else makeSubst alpha tau
+    | (tau, TVar alpha)  -> 
+      if (hasAlpha alpha tau) then raise (M.TypeError "alpha in tau")
+      else makeSubst alpha tau
+    | (TLoc lt1, TLoc lt2) -> unification lt1 lt2
+    | (TFun (pt1, pt2), TFun (pt3, pt4))
+    | (TPair (pt1, pt2), TPair (pt3, pt4)) ->
+      let s1 = unification pt1 pt3 in
+      let s2 = unification pt2 pt4 in
+      s1 @@ s2
+    | _ -> raise (M.TypeError "Unification failed")
+  )
+
+
+(* TODO:
+   Make type equation construction algorithm
+   Reference course material 5-1.pdf
+
+   Based on W algorithm
+*)
+let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
   match exp with
-  (* CONST *)
-  | M.CONST M.S _ -> (gamma, TString)
-  | M.CONST M.B _ -> (gamma, TBool)
-  | M.CONST M.N _ -> (gamma, TInt)
-  | M.VAR v -> (gamma, gamma v)
+  (* Const *)
+  | M.CONST M.N _ -> (TInt, emptySubst)
+  | M.CONST M.S _ -> (TString, emptySubst)
+  | M.CONST M.B _ -> (TBool, emptySubst)
 
-  (* Operations *)
-  | M.BOP (M.EQ, e1, e2) ->
-    let (gamma', type1) = exp2typ gamma e1 in
-    let (gamma'', type2) = exp2typ gamma' e2 in
-    (
-      match (type1, type2) with
-      | (TVar x1, TVar x2) ->
-        (* Keep variable as variable
-         * At this case, both variables can be
-         *  String
-         *  Boolean
-         *  Integer
-         *  Location
-         *)
-        (* let gamma'' = bindType gamma'' (x1, TAlpha) in *)
-        (* let gamma'' = bindType gamma'' (x2, TAlpha) in *)
-        (gamma'', TBool)
-      | (TVar x1, TInt) -> (bindType gamma'' (x1, TInt), TBool)
-      | (TVar x1, TString) -> (bindType gamma'' (x1, TString), TBool)
-      | (TVar x1, TBool) -> (bindType gamma'' (x1, TBool), TBool)
-      | (TVar x1, TLoc ltype) -> (bindType gamma'' (x1, TLoc ltype), TBool)
-      | (TInt, TVar x2) -> (bindType gamma'' (x2, TInt), TBool)
-      | (TString, TVar x2) -> (bindType gamma'' (x2, TString), TBool)
-      | (TBool, TVar x2) -> (bindType gamma'' (x2, TBool), TBool)
-      | (TLoc ltype, TVar x2) -> (bindType gamma'' (x2, TLoc ltype), TBool)
-      | (TInt, TInt)
-      | (TBool, TBool)
-      | (TString, TString)
-        (* TODO:
-         * Does recursive check for pointer needed?
-         *)
-      | (TLoc _, TLoc _) -> (gamma'', TBool)
-      | (_, _) -> raise (M.TypeError "Invalid equivalent compare")
-    )
-  | M.BOP (M.OR, e1, e2)
-  | M.BOP (M.AND, e1, e2) ->
-    let (gamma', type1) = exp2typ gamma e1 in
-    let (gamma'', type2) = exp2typ gamma' e2 in
-    (
-      match (type1, type2) with
-      | (TVar x1, TVar x2) ->
-        (* Variable must be boolean *)
-        let gamma'' = bindType gamma'' (x1, TBool) in
-        let gamma'' = bindType gamma'' (x2, TBool) in
-        (gamma'', TBool)
-      | (TVar x1, TBool) -> (bindType gamma'' (x1, TBool), TBool)
-      | (TBool, TVar x2) -> (bindType gamma'' (x2, TBool), TBool)
-      | (TBool, TBool) -> (gamma'', TBool)
-      | (_, _) -> raise (M.TypeError "OR/AND operation type mismatch")
-    )
+  (* Variable *)
+  | M.VAR id -> (find env id, emptySubst)
+
+  (* Function *)
+  | M.FN (x, e) ->
+    (* Unknown argument x type *)
+    let alpha = new_var() in
+    let alpha = TVar alpha in
+
+    (* Evaluate type e == returnType 
+     * argumentType will be evaluated in this statement and stored in s
+    *)
+    let (tau, s) = eval (((x, alpha) :: env), e) in
+
+    (* Debug *)
+    (* let _ = Printf.printf "(FN) %s\n" (typ2string (TFun (s alpha, tau))) in *)
+    (TFun (s alpha, tau), s)
+
+  | M.APP (e1, e2) ->
+    let (tau, s) = eval (env, e1) in
+    let (tau', s') = eval (substEnv s env, e2) in
+
+    (* Unknown return type *)
+    let alpha = newVar() in
+    let s'' = unification (TFun (tau', alpha)) (s' tau) in
+    (* let _ = Printf.printf "(APP) %s\n" (typ2string (TFun (tau', s'' alpha))) in *)
+
+    (s'' alpha, s'' @@ s' @@ s)
+
+  (* BOP *)
   | M.BOP (M.ADD, e1, e2)
   | M.BOP (M.SUB, e1, e2) ->
-    (* valid iff both types are TyInt *)
-    let (gamma', type1) = exp2typ gamma e1 in
-    let (gamma'', type2) = exp2typ gamma' e2 in
+    (* Same as *)
+    let equalFunc = TPair (TInt, TInt) in
+
+    let (tau, s) = eval (env, e1) in
+    let (tau', s') = eval (substEnv s env, e2) in
+    let s'' = unification equalFunc (TPair (tau, tau')) in
+    (TInt, s'' @@ s' @@ s)
+  | M.BOP (M.OR, e1, e2)
+  | M.BOP (M.AND, e1, e2) ->
+    (* Same as *)
+    let equalFunc = TPair (TBool, TBool) in
+
+    let (tau, s) = eval (env, e1) in
+    let (tau', s') = eval (substEnv s env, e2) in
+    let s'' = unification equalFunc (TPair (tau, tau')) in
+    (TBool, s'' @@ s' @@ s)
+  | M.BOP (M.EQ, e1, e2) -> 
+    (* Both type should be same into alpha*) 
+    (* let alpha = newVar() in *)
+    let (tau, s) = eval (env, e1) in
+    (* let s1 = unification alpha tau in *)
+    (* let _ = Printf.printf "(EQ) left = %s\n" (typ2string tau) in *)
+    let (tau', s') = eval (substEnv s env, e2) in
+    (* let s2 = unification (s' alpha) tau' in *)
+    (* let _ = Printf.printf "(EQ) rignt = %s\n" (typ2string tau') in *)
+
+    (* Two types must be same *)
+    let s'' = unification tau tau' in
+    (TBool, s'' @@ s' @@ s)
+  (* (TBool, s2 @@ s1 @@ s' @@ s) *)
+  (* (TBool, s2 @@ s1 @@ s' @@ s) *)
+  (* Let Binding *)
+  | M.LET ((M.VAL (x, e1)), e2) ->
+    (* Refer to https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system#Let-polymorphism *)
+    let (tau, s) = eval (env, e1) in
+    let env' = substEnv s env in
+    let (tau', s') = eval ((x, tau)::env', e2) in
+
+    (* Debug *)
+    (* let _ = Printf.printf "(LET1) %s = %s\n" x (typ2string tau) in *)
+    (tau', s' @@ s)
+  | M.LET ((M.REC (f, x, e1)), e2) ->
+
+    (* funtion f: alpha -> beta *)
+    (* arg x : alpha *)
+    let alpha = newVar() in
+    let beta = newVar() in
+    let env' = (x, alpha) :: env in
+    let ftype = TFun (alpha, beta) in
+    let env'' = (f, ftype) :: env' in
+
+    (* evalulate function body 
+       this tau is a return type *)
+    let (tau, s) = eval (env'', e1) in 
+    let s' = unification ftype (TFun (s alpha, tau)) in
+    (* let _ = Printf.printf "(LETREC) %s = %s\n" f (typ2string (TFun (s alpha, tau))) in *)
+    let env' = (f, (TFun (s' alpha, tau))) :: (x, s' alpha) :: env in
+    let (tau', s'') = eval (env', e2) in
+    (tau', s'' @@ s' @@ s)
+
+
+  (* Memory *)
+  | M.MALLOC e ->
+    let (tau, s) = eval (env, e) in
+
+    (* Debug *)
+    (* let _ = Printf.printf "(MALLOC) %s\n" (typ2string (TLoc tau)) in *)
+    (TLoc tau, s)
+  | M.ASSIGN (e1, e2) ->
+    let (tau, s) =  eval (env, e1) in
+    let (tau', s') = eval (env, e2) in
+    let s'' = unification tau tau' in
+    (s'' tau', s'' @@ s' @@ s)
+  | M.BANG e ->
+    let (tau, s) = eval (env, e) in
     (
-      match (type1, type2) with
-      | (TVar x1, TVar x2) -> 
-        (* Variable must be integer *)
-        let gamma'' = bindType gamma'' (x1, TInt) in
-        let gamma'' = bindType gamma'' (x2, TInt) in
-        (gamma'', TInt)
-      | (TVar x1, TInt) -> (bindType gamma'' (x1, TInt), TInt)
-      | (TInt, TVar x2) -> (bindType gamma'' (x2, TInt), TInt)
-      | (TInt, TInt) -> (gamma'', TInt)
-      | (_, _) -> raise (M.TypeError "ADD/SUB operation type mismatch")
+      match tau with 
+      | TLoc locType -> (s locType, s)
+      | TVar v ->
+        let alpha = new_var() in
+        let alpha = TVar alpha in
+        let s' = unification tau (TLoc alpha) in
+        (s' tau, s' @@ s)
+      | _ -> raise (M.TypeError "BANG only location")
     )
 
   (* Control Statement *)
-  | M.IF (e1, e2, e3) ->
-    let (gamma', type1) = exp2typ gamma e1 in
-    if (type1 = TBool) then (
-      let (gamma'', type2) = exp2typ gamma' e2 in
-      let (gamma''', type3) = exp2typ gamma'' e3 in
-      if (type2 = type3) then (gamma''', type2)
-      else raise (M.TypeError "Type mismatch in if statement branch")
-    )
-    else raise (M.TypeError "Condition of if statement is not a Bool")
+  | M.IF (cond, e1, e2) ->
+    (* Must be a boolean *)
+    let (tau, s) = eval (env, cond) in
+    let s' = unification tau TBool in
 
-  (* Function Related *)
-  | M.APP (e1, e2) ->
-    let (gamma', type1) = exp2typ gamma e1 in
-    (match type1 with
-     | TFun (t1, t2) ->
-       (
-         match (t1, t2) with
-         | (TVar x, TVar y) -> 
-           (* it is same as alpha -> alpha *)
-           if (x = y) then exp2typ gamma' e2
-           else raise (M.TypeError "Function App type mismatch")
-         | (TVar x, _) -> (gamma', t2)
-         | _ -> 
-           let (gamma'', type2) = exp2typ gamma' e2 in
-           if (type2 = t1) then (gamma'', t2)
-           else raise (M.TypeError "Function App type mismatch")
-       )
-     | _ -> raise (M.TypeError "First type of APP must be function")
-    )
-    
-  | M.FN (x, e) ->
-    let gamma' = bindType gamma (x, TVar x) in
-    let (gamma', etype) = exp2typ gamma' e in
+    (* eval then and else *)
+    let (tau1, s1) = eval (env, e1) in
+    let (tau2, s2) = eval (substEnv s1 env, e2) in
+    (* let _ = Printf.printf "(IF) %s\n" (typ2string tau2) in *)
 
-    (* For debugging *)
-    (* let _ = Printf.printf "This Function Type is %s -> %s\n" (typ2string (gamma' x)) (typ2string etype) in *)
+    (* Must be same *)
+    let s'' = unification tau1 tau2 in
 
-    (gamma', TFun (gamma' x, etype))
-  | M.LET ((M.VAL (x, e1)), e2) ->
-    let (gamma', etype) = exp2typ gamma e1 in
+    (* Return *)
+    (s'' tau2, s''  @@ s2 @@ s1 @@ s' @@ s)
 
-    (* For debugging *)
-    (* let _ = Printf.printf "Expression type is %s\n" (typ2string etype) in *)
-
-    let gamma' = bindType gamma' (x, etype) in
-    exp2typ gamma' e2
-  | M.LET ((M.REC (f, x, e1)), e2) ->
-    (*
-     * 1. BIND f that it takes x as arg
-     *)
-    let gamma' = bindType gamma (f, TFun (TVar x, TVar x)) in
-    let gamma' = bindType gamma' (x, TVar x) in
-    let (gamma', etype) = exp2typ gamma' e1 in
-    let gamma' = bindType gamma' (x, etype) in
-
-    (* For debugging *)
-    (* let _ = Printf.printf "Expression type is %s\n" (typ2string (gamma' f)) in *)
-
-    exp2typ gamma' e2
-
-  (* I/O Related *)
-  | M.READ -> (gamma, TInt)
+  (* I/O *)
+  | M.READ -> (TInt, emptySubst)
   | M.WRITE e ->
-    let (gamma', type1) = exp2typ gamma e in
-    if ((type1 = TInt) || (type1 = TBool) || (type1 = TString)) then (gamma', type1)
-    else raise (M.TypeError "Write only support Int, Bool, and String")
-
-  (* Memory Related *)
-  | M.MALLOC e ->
-    let (gamma', type1) = exp2typ gamma e in
-    (gamma', TLoc type1)
-  | M.ASSIGN (e1, e2) ->
-    let (gamma', type1) = exp2typ gamma e1 in
-    let (gamma'', type2) = exp2typ gamma' e2 in
+    let (tau, s) = eval (env, e)  in
     (
-      match type1 with
-      | TLoc ltype -> 
-        if (type2 = ltype) then (gamma'', type2)
-        else raise (M.TypeError "Assign Failure (assign type mismatch)")
-      | _ -> raise (M.TypeError "Assign Failure (not a location)")
-    )
-  | M.BANG e ->
-    let (gamma', type1) = exp2typ gamma e in
-    (
-      match type1 with
-      | TLoc ltype -> (gamma', ltype)
-      | _ -> raise (M.TypeError "Non-location dereference")
+      match tau with
+      | TInt
+      | TBool
+      | TString -> (tau, s)
+      | TVar v ->
+        (tau, s)
+      | _ -> raise (M.TypeError "Invalid write type")
     )
 
-  (* Pair Related *)
+  (* Pair *)
   | M.PAIR (e1, e2) ->
-    let (gamma', type1) = exp2typ gamma e1 in
-    (* For debugging *)
-    (* let _ = Printf.printf "First pair is %s\n" (typ2string type1) in *)
-    let (gamma'', type2) = exp2typ gamma' e2 in
-    (* let _ = Printf.printf "Second pair is %s\n" (typ2string type1) in *)
-    (gamma'', TPair (type1, type2))
-  | M.FST e ->
-    let (gamma', type1) = exp2typ gamma e in
-    (
-      match type1 with
-      | TPair (t1, _) -> (gamma', t1)
-      | _ -> raise (M.TypeError "Not a pair")
-    )
-  | M.SND e ->
-    let (gamma', type1) = exp2typ gamma e in
-    (
-      match type1 with
-      | TPair (_, t2) -> (gamma', t2)
-      | _ -> raise (M.TypeError "Not a pair")
-    )
+    let (tau, s) = eval (env, e1) in
+    let (tau', s') = eval (env, e2) in
+    (* subst pair *)
+    let compound = s' @@ s in
+    (compound (TPair (tau, tau')), compound)
+  | M.FST (e) ->
+    let alpha = newVar() in
+    let beta = newVar() in
+    let (tau, s) = eval (env, e) in
+    (* tau must be a pair *)
+    let s' = unification (TPair (alpha, beta)) tau in
+    (* let _ = Printf.printf "(FST) %s\n" (typ2string (TPair ((s@@s') alpha, (s@@s') beta))) in *)
+    (s' alpha, s' @@ s)
+  | M.SND (e) ->
+    let alpha = newVar() in
+    let beta = newVar() in
+    let (tau, s) = eval (env, e) in
+    (* tau must be a pair *)
+    let s' = unification (TPair (alpha, beta)) tau in
+    (s' beta, s' @@ s)
+  | M.SEQ (e1, e2) ->
+    let (tau, s) = eval (env, e1) in
+    let (tau', s') = eval ((substEnv s env), e2) in
+    (tau', s' @@ s)
 
-  | M.SEQ (e1, e2) -> 
-    let (gamma', _ ) = exp2typ gamma e1 in
-    exp2typ gamma' e2
 
 
-
-let rec typ2types = function
+let rec typ2types: typ -> M.types = fun typ ->
+  match typ with
   | TInt -> M.TyInt
   | TBool -> M.TyBool
   | TString -> M.TyString
   | TPair (t1, t2) -> M.TyPair (typ2types t1, typ2types t2)
   | TLoc (t) -> M.TyLoc (typ2types t)
-  | TFun (t1, t2) -> M.TyArrow (typ2types t1, typ2types t2)
+  | TVar x -> raise (M.TypeError ("invalid result type var " ^ x))
   | _ -> raise (M.TypeError "invalid result type")
 
 
 (* TODO : Implement this function *)
 let check : M.exp -> M.types = fun exp ->
-	let (_, typResult) = exp2typ emptyGamma exp in
-	typ2types typResult
+  let (result, _) = eval ([], exp) in
+  typ2types result
