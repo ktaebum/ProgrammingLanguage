@@ -155,6 +155,7 @@ let rec unification: typ -> typ -> subst = fun t1 t2 ->
         | TString
         | TInt
         | TWr _ -> makeSubst alpha tau
+        | TEq v -> makeSubst v (TWr alpha) (* Narrow scope *)
         | _ -> raise (M.TypeError "Cannot write")
       )
     | (tau, TWr alpha)  -> 
@@ -164,6 +165,7 @@ let rec unification: typ -> typ -> subst = fun t1 t2 ->
         | TString
         | TInt
         | TWr _ -> makeSubst alpha tau
+        | TEq v -> makeSubst v (TWr alpha) (* Narrow scope *)
         | _ -> raise (M.TypeError "Cannot write")
       )
     | (tau, TEq alpha)  -> 
@@ -172,6 +174,7 @@ let rec unification: typ -> typ -> subst = fun t1 t2 ->
         | TBool
         | TString
         | TInt
+        | TWr _
         | TEq _ -> makeSubst alpha tau
         | TLoc ltype -> 
           if (hasAlpha alpha ltype) then raise (M.TypeError "alpha in tau")
@@ -184,6 +187,7 @@ let rec unification: typ -> typ -> subst = fun t1 t2 ->
         | TBool
         | TString
         | TInt
+        | TWr _
         | TEq _ -> makeSubst alpha tau
         | TLoc ltype -> 
           if (hasAlpha alpha ltype) then raise (M.TypeError "alpha in tau")
@@ -363,6 +367,10 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
       | TWr _  (* Keep it *)
       | TString -> (tau, s)
       | TVar _ ->
+        let alpha = newWVar() in
+        let s' = unification tau alpha in
+        (s' alpha, s' @@ s)
+      | TEq _ ->
         let alpha = newWVar() in
         let s' = unification tau alpha in
         (s' alpha, s' @@ s)
