@@ -17,6 +17,12 @@ let ecount = ref 0
 let new_var () =
   let _ = count := !count +1 in
   "x_" ^ (string_of_int !count)
+let new_evar () =
+  let _ = ecount := !ecount +1 in
+  "e_" ^ (string_of_int !count)
+let new_wvar () =
+  let _ = wcount := !wcount +1 in
+  "w_" ^ (string_of_int !count)
 
 type typ = 
   | TInt
@@ -26,11 +32,19 @@ type typ =
   | TLoc of typ
   | TFun of typ * typ
   | TVar of var
-  (* Modify, or add more if needed *)
+  | TEq of var (* equivalent *)
+  | TWr of var (* writable *)
+(* Modify, or add more if needed *)
 
 let newVar () = 
   let v = new_var() in
   TVar v
+let newEVar () = 
+  let v = new_evar() in
+  TEq v
+let newWVar () = 
+  let v = new_wvar() in
+  TWr v
 
 (* For Debugging *)
 let  rec typ2string: typ -> string = fun typ ->
@@ -40,6 +54,8 @@ let  rec typ2string: typ -> string = fun typ ->
   | TString -> "String"
   | TLoc l -> "Location of (" ^ (typ2string l) ^ ")"
   | TVar v -> "Unknown variable " ^ v
+  | TEq v -> "Unknown eq variable " ^ v
+  | TWr v -> "Unknown write variable " ^ v
   | TFun (arg, ret) -> "Function of (" ^ (typ2string arg) ^ " -> " ^ (typ2string ret) ^ ")"
   | TPair (t1, t2) -> "Pair of (" ^ (typ2string t1) ^ ", " ^ (typ2string t2) ^ ")"
 
@@ -70,8 +86,13 @@ let makeSubst: var -> typ -> subst = fun x t ->
     match t' with
     | TVar x' -> 
       (* if x' is x, our target 
+         Since prefix of TWr and TEq are different, it is safe matching
          Substitute TVar x' as t*)
       if (x = x') then t else t'
+    | TWr w' ->
+      if (x = w') then t else t'
+    | TEq e' ->
+      if (x = e') then t else t'
     | TPair (t1, t2) -> TPair (subs t1, subs t2)
     | TLoc t'' -> TLoc (subs t'')
     | TFun (t1, t2) -> TFun (subs t1, subs t2)
@@ -104,6 +125,8 @@ let rec hasAlpha: var -> typ -> bool = fun alpha tau ->
   (* Check occurence of alpha \in tau *)
   match tau with 
   | TVar x -> x = alpha
+  | TWr w -> w = alpha
+  | TEq w -> w = alpha
   | TPair (t1, t2) 
   | TFun (t1, t2) ->
     (hasAlpha alpha t1) || (hasAlpha alpha t2)
@@ -125,6 +148,48 @@ let rec unification: typ -> typ -> subst = fun t1 t2 ->
     | (tau, TVar alpha)  -> 
       if (hasAlpha alpha tau) then raise (M.TypeError "alpha in tau")
       else makeSubst alpha tau
+    | (TWr alpha, tau)  -> 
+      (
+        match tau with 
+        | TBool
+        | TString
+        | TInt
+        | TWr _ -> makeSubst alpha tau
+        | _ -> raise (M.TypeError "Cannot write")
+      )
+    | (tau, TWr alpha)  -> 
+      (
+        match tau with 
+        | TBool
+        | TString
+        | TInt
+        | TWr _ -> makeSubst alpha tau
+        | _ -> raise (M.TypeError "Cannot write")
+      )
+    | (tau, TEq alpha)  -> 
+      (
+        match tau with 
+        | TBool
+        | TString
+        | TInt
+        | TEq _ -> makeSubst alpha tau
+        | TLoc ltype -> 
+          if (hasAlpha alpha ltype) then raise (M.TypeError "alpha in tau")
+          else makeSubst alpha tau
+        | _ -> raise (M.TypeError "Cannot Compare Equality")
+      )
+    | (TEq alpha, tau)  -> 
+      (
+        match tau with 
+        | TBool
+        | TString
+        | TInt
+        | TEq _ -> makeSubst alpha tau
+        | TLoc ltype -> 
+          if (hasAlpha alpha ltype) then raise (M.TypeError "alpha in tau")
+          else makeSubst alpha tau
+        | _ -> raise (M.TypeError "Cannot Compare Equality")
+      )
     | (TLoc lt1, TLoc lt2) -> unification lt1 lt2
     | (TFun (pt1, pt2), TFun (pt3, pt4))
     | (TPair (pt1, pt2), TPair (pt3, pt4)) ->
@@ -198,28 +263,27 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
     (TBool, s'' @@ s' @@ s)
   | M.BOP (M.EQ, e1, e2) -> 
     (* Both type should be same into alpha*) 
-    (* let alpha = newVar() in *)
+    let alpha = newEVar() in
     let (tau, s) = eval (env, e1) in
-    (* let s1 = unification alpha tau in *)
-    (* let _ = Printf.printf "(EQ) left = %s\n" (typ2string tau) in *)
-    let (tau', s') = eval (substEnv s env, e2) in
+    let s' = unification alpha tau in
+    (* let _ = Printf.printf "tau = %s\n" (typ2string (s' tau)) in *)
+    let (tau', s'') = eval (substEnv (s'@@s) env, e2) in
+    (* let _ = Printf.printf "tau' = %s\n" (typ2string tau') in *)
     (* let s2 = unification (s' alpha) tau' in *)
-    (* let _ = Printf.printf "(EQ) rignt = %s\n" (typ2string tau') in *)
 
     (* Two types must be same *)
-    let s'' = unification tau tau' in
-    (TBool, s'' @@ s' @@ s)
-  (* (TBool, s2 @@ s1 @@ s' @@ s) *)
-  (* (TBool, s2 @@ s1 @@ s' @@ s) *)
+    let s''' = unification (s' tau) tau' in
+    (TBool, s''' @@ s'' @@ s' @@ s)
+
   (* Let Binding *)
   | M.LET ((M.VAL (x, e1)), e2) ->
     (* Refer to https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system#Let-polymorphism *)
     let (tau, s) = eval (env, e1) in
+    (* Debug *)
+    (* let _ = Printf.printf "(LET1) %s = %s\n" x (typ2string tau) in *)
     let env' = substEnv s env in
     let (tau', s') = eval ((x, tau)::env', e2) in
 
-    (* Debug *)
-    (* let _ = Printf.printf "(LET1) %s = %s\n" x (typ2string tau) in *)
     (tau', s' @@ s)
   | M.LET ((M.REC (f, x, e1)), e2) ->
 
@@ -292,8 +356,13 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
       | TInt
       | TBool
       | TString -> (tau, s)
-      | TVar v ->
+      | TWr w -> (* Keep it *)
         (tau, s)
+      | TVar v ->
+        (* Convert into write var *)
+        let alpha = newWVar() in
+        let s' = unification tau alpha in
+        (s' alpha, s' @@ s)
       | _ -> raise (M.TypeError "Invalid write type")
     )
 
