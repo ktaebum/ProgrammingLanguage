@@ -219,16 +219,13 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
   (* Function *)
   | M.FN (x, e) ->
     (* Unknown argument x type *)
-    let alpha = new_var() in
-    let alpha = TVar alpha in
+    let alpha = newVar() in
 
     (* Evaluate type e == returnType 
      * argumentType will be evaluated in this statement and stored in s
     *)
     let (tau, s) = eval (((x, alpha) :: env), e) in
 
-    (* Debug *)
-    (* let _ = Printf.printf "(FN) %s\n" (typ2string (TFun (s alpha, tau))) in *)
     (TFun (s alpha, tau), s)
 
   | M.APP (e1, e2) ->
@@ -238,38 +235,40 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
     (* Unknown return type *)
     let alpha = newVar() in
     let s'' = unification (TFun (tau', alpha)) (s' tau) in
-    (* let _ = Printf.printf "(APP) %s\n" (typ2string (TFun (tau', s'' alpha))) in *)
 
     (s'' alpha, s'' @@ s' @@ s)
 
   (* BOP *)
   | M.BOP (M.ADD, e1, e2)
   | M.BOP (M.SUB, e1, e2) ->
-    (* Same as *)
-    let equalFunc = TPair (TInt, TInt) in
+    (* Operand must be int pair  *)
+    let equalArg = TPair (TInt, TInt) in
 
     let (tau, s) = eval (env, e1) in
     let (tau', s') = eval (substEnv s env, e2) in
-    let s'' = unification equalFunc (TPair (tau, tau')) in
+    let s'' = unification equalArg (TPair (s tau, s' tau')) in
     (TInt, s'' @@ s' @@ s)
   | M.BOP (M.OR, e1, e2)
   | M.BOP (M.AND, e1, e2) ->
     (* Same as *)
-    let equalFunc = TPair (TBool, TBool) in
+    let equalArg = TPair (TBool, TBool) in
 
     let (tau, s) = eval (env, e1) in
     let (tau', s') = eval (substEnv s env, e2) in
-    let s'' = unification equalFunc (TPair (tau, tau')) in
+    let s'' = unification equalArg (TPair (s tau, s' tau')) in
     (TBool, s'' @@ s' @@ s)
   | M.BOP (M.EQ, e1, e2) -> 
     (* Both type should be same into alpha*) 
     let alpha = newEVar() in
+
+    (* Eval left operand *)
     let (tau, s) = eval (env, e1) in
+
+    (* Substitute alpha into tau *)
     let s' = unification alpha tau in
-    (* let _ = Printf.printf "tau = %s\n" (typ2string (s' tau)) in *)
-    let (tau', s'') = eval (substEnv (s'@@s) env, e2) in
-    (* let _ = Printf.printf "tau' = %s\n" (typ2string tau') in *)
-    (* let s2 = unification (s' alpha) tau' in *)
+
+    (* From known result, eval right operand *)
+    let (tau', s'') = eval (substEnv (s' @@ s) env, e2) in
 
     (* Two types must be same *)
     let s''' = unification (s' tau) tau' in
@@ -279,14 +278,13 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
   | M.LET ((M.VAL (x, e1)), e2) ->
     (* Refer to https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system#Let-polymorphism *)
     let (tau, s) = eval (env, e1) in
-    (* Debug *)
-    (* let _ = Printf.printf "(LET1) %s = %s\n" x (typ2string tau) in *)
     let env' = substEnv s env in
     let (tau', s') = eval ((x, tau)::env', e2) in
 
-    (tau', s' @@ s)
-  | M.LET ((M.REC (f, x, e1)), e2) ->
 
+    (s' tau', s' @@ s)
+
+  | M.LET ((M.REC (f, x, e1)), e2) ->
     (* funtion f: alpha -> beta *)
     (* arg x : alpha *)
     let alpha = newVar() in
@@ -298,35 +296,43 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
     (* evalulate function body 
        this tau is a return type *)
     let (tau, s) = eval (env'', e1) in 
-    let s' = unification ftype (TFun (s alpha, tau)) in
-    (* let _ = Printf.printf "(LETREC) %s = %s\n" f (typ2string (TFun (s alpha, tau))) in *)
-    let env' = (f, (TFun (s' alpha, tau))) :: (x, s' alpha) :: env in
+    let s' = unification ftype (TFun (s alpha, s tau)) in
+    let env' = (f, (TFun (s' alpha, s' tau))) :: (x, s' alpha) :: env in
     let (tau', s'') = eval (env', e2) in
-    (tau', s'' @@ s' @@ s)
-
+    (s'' tau', s'' @@ s' @@ s)
 
   (* Memory *)
   | M.MALLOC e ->
+    (* Must be location *)
     let (tau, s) = eval (env, e) in
-
-    (* Debug *)
-    (* let _ = Printf.printf "(MALLOC) %s\n" (typ2string (TLoc tau)) in *)
-    (TLoc tau, s)
+    (TLoc (s tau), s)
   | M.ASSIGN (e1, e2) ->
     let (tau, s) =  eval (env, e1) in
     let (tau', s') = eval (env, e2) in
-    let s'' = unification tau tau' in
-    (s'' tau', s'' @@ s' @@ s)
+    (
+      match tau with
+      | TLoc ltype ->(
+          let s'' = unification ltype tau' in
+          (s'' tau', s'' @@ s' @@ s)
+        )
+      | TVar v ->
+        (* tau must be a location type *)
+        let alpha = newVar() in
+        let s'' = unification tau (TLoc alpha) in
+        let s''' = unification (s'' alpha) tau' in
+        (s''' tau', s''' @@ s'' @@ s' @@ s)
+      | _ -> raise (M.TypeError "Assign to non-loc type")
+    )
   | M.BANG e ->
+    (* Invariant: e must be a location *)
     let (tau, s) = eval (env, e) in
     (
       match tau with 
       | TLoc locType -> (s locType, s)
       | TVar v ->
-        let alpha = new_var() in
-        let alpha = TVar alpha in
+        let alpha = newVar() in
         let s' = unification tau (TLoc alpha) in
-        (s' tau, s' @@ s)
+        (s' alpha, s' @@ s)
       | _ -> raise (M.TypeError "BANG only location")
     )
 
@@ -337,9 +343,8 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
     let s' = unification tau TBool in
 
     (* eval then and else *)
-    let (tau1, s1) = eval (env, e1) in
-    let (tau2, s2) = eval (substEnv s1 env, e2) in
-    (* let _ = Printf.printf "(IF) %s\n" (typ2string tau2) in *)
+    let (tau1, s1) = eval (substEnv s env, e1) in
+    let (tau2, s2) = eval (substEnv (s1 @@ s) env, e2) in
 
     (* Must be same *)
     let s'' = unification tau1 tau2 in
@@ -355,11 +360,9 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
       match tau with
       | TInt
       | TBool
+      | TWr _  (* Keep it *)
       | TString -> (tau, s)
-      | TWr w -> (* Keep it *)
-        (tau, s)
-      | TVar v ->
-        (* Convert into write var *)
+      | TVar _ ->
         let alpha = newWVar() in
         let s' = unification tau alpha in
         (s' alpha, s' @@ s)
@@ -371,14 +374,13 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
     let (tau, s) = eval (env, e1) in
     let (tau', s') = eval (env, e2) in
     (* subst pair *)
-    let compound = s' @@ s in
-    (compound (TPair (tau, tau')), compound)
+    ((s'@@ s) (TPair (s tau, s' tau')), s' @@ s)
   | M.FST (e) ->
     let alpha = newVar() in
     let beta = newVar() in
     let (tau, s) = eval (env, e) in
     (* tau must be a pair *)
-    let s' = unification (TPair (alpha, beta)) tau in
+    let s' = unification (TPair (alpha, beta)) (s tau) in
     (* let _ = Printf.printf "(FST) %s\n" (typ2string (TPair ((s@@s') alpha, (s@@s') beta))) in *)
     (s' alpha, s' @@ s)
   | M.SND (e) ->
@@ -386,12 +388,12 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
     let beta = newVar() in
     let (tau, s) = eval (env, e) in
     (* tau must be a pair *)
-    let s' = unification (TPair (alpha, beta)) tau in
+    let s' = unification (TPair (alpha, beta)) (s tau) in
     (s' beta, s' @@ s)
   | M.SEQ (e1, e2) ->
     let (tau, s) = eval (env, e1) in
     let (tau', s') = eval ((substEnv s env), e2) in
-    (tau', s' @@ s)
+    (s' tau', s' @@ s)
 
 
 
@@ -402,8 +404,10 @@ let rec typ2types: typ -> M.types = fun typ ->
   | TString -> M.TyString
   | TPair (t1, t2) -> M.TyPair (typ2types t1, typ2types t2)
   | TLoc (t) -> M.TyLoc (typ2types t)
-  | TVar x -> raise (M.TypeError ("invalid result type var " ^ x))
-  | _ -> raise (M.TypeError "invalid result type")
+  | TVar x -> raise (M.TypeError ("invalid result: type var " ^ x))
+  | TWr x -> raise (M.TypeError ("invalid result: write type var " ^ x))
+  | TEq x -> raise (M.TypeError ("invalid result: eq type var " ^ x))
+  | TFun _ -> raise (M.TypeError "invalide result: type fucntion")
 
 
 (* TODO : Implement this function *)
