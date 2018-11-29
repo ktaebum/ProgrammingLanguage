@@ -319,6 +319,7 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
           let s'' = unification ltype tau' in
           (s'' tau', s'' @@ s' @@ s)
         )
+      | TEq v 
       | TVar v ->
         (* tau must be a location type *)
         let alpha = newVar() in
@@ -333,6 +334,7 @@ let rec eval: (gamma * M.exp) -> (typ * subst) = fun (env, exp) ->
     (
       match tau with 
       | TLoc locType -> (s locType, s)
+      | TEq v
       | TVar v ->
         let alpha = newVar() in
         let s' = unification tau (TLoc alpha) in

@@ -13,6 +13,10 @@ end
 *)
 
 let val f = fn x => fn y =>
-  if (x = y) then write(x) else x in
-  f true true
+  (
+    (x = y);
+    x := 3
+  )
+  in
+  f (malloc 3) (malloc 5)
 end
