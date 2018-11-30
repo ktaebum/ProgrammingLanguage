@@ -31,10 +31,10 @@ module M : sig
 
   (* type in M  *)
   type typ = TyInt                      (* integer type *)
-             | TyBool                   (* boolean type *)
-             | TyString                 (* string type *)
-             | TyPair of typ * typ      (* pair type *)
-             | TyLoc of typ             (* location type *)
+           | TyBool                   (* boolean type *)
+           | TyString                 (* string type *)
+           | TyPair of typ * typ      (* pair type *)
+           | TyLoc of typ             (* location type *)
 
   (* errors *)
   exception RunError of string
@@ -68,10 +68,10 @@ struct
 
   (* type in M  *)
   type typ = TyInt                    (* integer type *)
-             | TyBool                 (* boolean type *)
-             | TyString               (* string type *)
-             | TyPair of typ * typ    (* pair type *)
-             | TyLoc of typ           (* location type *)
+           | TyBool                 (* boolean type *)
+           | TyString               (* string type *)
+           | TyPair of typ * typ    (* pair type *)
+           | TyLoc of typ           (* location type *)
 
   (* errors *)
   exception RunError of string
@@ -95,7 +95,7 @@ struct
   (* f @+ (x, v)              f[x |-> v]
    * store M (l, v)           M[l |-> v]
    * load M l                M(l)
-   *)
+  *)
   let loc_count = ref 0
   let (@+) f (x, v) = (fun y -> if y = x then v else f y)
   let store m (l, v) =  m @+ (l, v)
@@ -130,18 +130,18 @@ struct
 
   let op2fn =
     function ADD -> (fun (v1,v2) -> Int (getInt v1 + getInt v2))
-    | SUB -> (fun (v1,v2) -> Int (getInt v1 - getInt v2))
-    | AND -> (fun (v1,v2) -> Bool (getBool v1 && getBool v2))
-    | OR ->  (fun (v1,v2) -> Bool (getBool v1 || getBool v2))
-    | EQ ->
-      (fun (v1, v2) -> 
-        match (v1,v2) with
-        | (Int n1, Int n2) -> Bool (n1 = n2)
-        | (String s1, String s2) -> Bool (s1 = s2)
-        | (Bool b1, Bool b2) -> Bool (b1 = b2)
-        | (Loc l1, Loc l2) -> Bool (l1 = l2)
-        | _ -> raise (TypeError "EQ operands are not int/bool/str/loc")
-      )
+           | SUB -> (fun (v1,v2) -> Int (getInt v1 - getInt v2))
+           | AND -> (fun (v1,v2) -> Bool (getBool v1 && getBool v2))
+           | OR ->  (fun (v1,v2) -> Bool (getBool v1 || getBool v2))
+           | EQ ->
+             (fun (v1, v2) -> 
+                match (v1,v2) with
+                | (Int n1, Int n2) -> Bool (n1 = n2)
+                | (String s1, String s2) -> Bool (s1 = s2)
+                | (Bool b1, Bool b2) -> Bool (b1 = b2)
+                | (Loc l1, Loc l2) -> Bool (l1 = l2)
+                | _ -> raise (TypeError "EQ operands are not int/bool/str/loc")
+             )
 
   let rec printValue =
     function 
@@ -162,11 +162,11 @@ struct
       let (v2, m'') = eval env m' e2 in
       let (c, env') = getClosure v1 in
       (match c with 
-      | Fun (x, e) -> eval (bind env' (x, v2)) m'' e
-      | RecFun (f, x, e) ->
-        let env'' = bind env' (x, v2) in
-        let env''' = bind env'' (f, v1) in
-        eval env''' m'' e)
+       | Fun (x, e) -> eval (bind env' (x, v2)) m'' e
+       | RecFun (f, x, e) ->
+         let env'' = bind env' (x, v2) in
+         let env''' = bind env'' (f, v1) in
+         eval env''' m'' e)
     | IF (e1, e2, e3) ->
       let (v1, m') = eval env mem e1 in
       eval env m' (if getBool v1 then e2 else e3)
