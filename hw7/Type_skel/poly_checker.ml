@@ -37,6 +37,15 @@ type typ_scheme =
   | GenTyp of (var list * typ)
 
 type typ_env = (M.id * typ_scheme) list
+let find env id =
+  try
+    let (_, scheme) = List.find (fun v -> (fst v) = id) env in
+    (
+      match scheme with
+      | SimpleTyp t -> t
+      | GenTyp _ -> failwith "Unimplemented"
+    )
+  with Not_found -> raise (M.TypeError ("Not bound id " ^ id))
 
 let count = ref 0 
 
@@ -213,6 +222,32 @@ let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
     let (s1, tau1) = infer ((x, SimpleTyp beta) :: env) e in
     (s1, TFun (s1 beta, tau1))
 
+  (* Var *)
+  | M.VAR id -> 
+    let tau = find env id in
+    (empty_subst, tau)
+
+  (* Let Binding *)
+  | M.LET ((M.VAL (x, e1)), e2) ->
+    let (s1, tau1) = infer env e1 in
+    let env2 = subst_env s1 env in
+    let (s2, tau2)  = infer ((x, SimpleTyp tau1) :: env2) e2 in
+    (s2 @@ s1, tau2)
+  | M.LET ((M.REC (f, x, e1)), e2) ->
+    let beta1 = newVar() in
+    let beta2 = newVar() in
+    let env1 = (x, SimpleTyp beta1) :: env in
+    let funcType = TFun (beta1, beta2) in
+    let env2 = (f, SimpleTyp funcType) :: env1 in
+
+
+    let (s1, tau1) = infer env2 e1 in
+    let s2 = unify funcType (TFun (s1 beta1, tau1)) in
+    let env3 = (f, SimpleTyp (TFun ((s2 beta1), tau1))) :: (x, SimpleTyp (s2 beta1)) :: env in
+    let (s3, tau2) = infer env3 e2 in
+    (s3 @@ s2 @@ s1, tau2)
+
+
   (* APP *)
   | M.APP (e1, e2) ->
     let beta = newVar() in
@@ -334,7 +369,10 @@ let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
     let (s1, tau1) = infer env e in
     let s2 = unify (TPair (alpha, beta)) tau1 in
     (s2 @@ s1, s2 beta)
-  | _ -> failwith "Unimplemented"
+  | M.SEQ (e1, e2) -> 
+    let (s1, tau1) = infer env e1 in
+    let (s2, tau2) = infer (subst_env s1 env) e2 in
+    (s2 @@ s1, tau2)
 
 
 (* TODO : Implement this function *)
