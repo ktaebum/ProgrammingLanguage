@@ -19,8 +19,15 @@ type typ =
   | TEQ of var (* Equivalent comparable var *)
 (* Modify, or add more if needed *)
 
+type typ_scheme =
+  | SimpleTyp of typ 
+  (* General Type *)
+  | GenTyp of (var list * typ)
+
+type typ_env = (M.id * typ_scheme) list
+
 let rec typ2string: typ -> string = fun t ->
-  match t with
+  match t with 
   | TInt -> "Int"
   | TBool -> "Bool"
   | TString -> "String"
@@ -30,28 +37,40 @@ let rec typ2string: typ -> string = fun t ->
   | TWrite x -> "Unknown writable type " ^ x
   | TEQ x -> "Unknown eq comparable type " ^ x
   | TLoc lt -> "Location of " ^ (typ2string lt)
+let rec typ_scheme2string: typ_scheme -> string = fun t ->
+  match t with
+  | SimpleTyp tt -> typ2string tt
+  | GenTyp (var_list, tt) -> 
+    let rec varListString: var list -> string = fun l ->
+      (
+        match l with 
+        | [] -> ""
+        | hd :: tl -> hd ^ ", " ^ (varListString tl)
+      )
+    in
+    "[ " ^ (varListString var_list) ^ "]" ^ (typ2string tt)
 
-type typ_scheme =
-  | SimpleTyp of typ 
-  (* General Type *)
-  | GenTyp of (var list * typ)
-
-type typ_env = (M.id * typ_scheme) list
 let find env id =
   try
     let (_, scheme) = List.find (fun v -> (fst v) = id) env in
-    (
-      match scheme with
-      | SimpleTyp t -> t
-      | GenTyp _ -> failwith "Unimplemented"
-    )
+    scheme
   with Not_found -> raise (M.TypeError ("Not bound id " ^ id))
 
 let count = ref 0 
+let ecount = ref 0
+let wcount = ref 0
 
 let new_var () = 
   let _ = count := !count +1 in
   "x_" ^ (string_of_int !count)
+
+let new_evar () = 
+  let _ = ecount := !ecount + 1 in
+  "e_" ^ (string_of_int !ecount)
+
+let new_wvar () = 
+  let _ = wcount := !wcount + 1 in
+  "w_" ^ (string_of_int !wcount)
 
 let newVar () = 
   (* Wrapper of new_var *)
@@ -59,11 +78,11 @@ let newVar () =
   TVar v
 
 let newWVar () =
-  let v = new_var() in
+  let v = new_wvar() in
   TWrite v
 
 let newEVar () =
-  let v = new_var() in
+  let v = new_evar() in
   TEQ v
 
 (* Definitions related to free type variable *)
@@ -82,6 +101,8 @@ let rec ftv_of_typ : typ -> var list = function
   | TPair (t1, t2) -> union_ftv (ftv_of_typ t1) (ftv_of_typ t2)
   | TLoc t -> ftv_of_typ t
   | TFun (t1, t2) ->  union_ftv (ftv_of_typ t1) (ftv_of_typ t2)
+  | TWrite v 
+  | TEQ v 
   | TVar v -> [v]
 
 let ftv_of_scheme : typ_scheme -> var list = function
@@ -123,6 +144,7 @@ let make_subst : var -> typ -> subst = fun x t ->
 
 let (@@) s1 s2 = (fun t -> s1 (s2 t)) (* substitution composition *)
 
+(* This is instantiate *)
 let subst_scheme : subst -> typ_scheme -> typ_scheme = fun subs tyscm ->
 
   match tyscm with
@@ -132,7 +154,15 @@ let subst_scheme : subst -> typ_scheme -> typ_scheme = fun subs tyscm ->
     let betas = List.map (fun _ -> new_var()) alphas in
     let s' =
       List.fold_left2
-        (fun acc_subst alpha beta -> make_subst alpha (TVar beta) @@ acc_subst)
+        (fun acc_subst alpha beta -> 
+           (
+             match String.get alpha 0 with
+             | 'x' -> make_subst alpha (TVar beta) @@ acc_subst
+             | 'w' -> make_subst alpha (TWrite beta) @@ acc_subst
+             | 'e' -> make_subst alpha (TEQ beta) @@ acc_subst
+             | _ -> raise (M.TypeError "Invalid Alpha")
+           )
+        )
         empty_subst alphas betas
     in
     GenTyp (betas, subs (s' t))
@@ -194,8 +224,8 @@ let rec hasVar: var -> typ -> bool = fun v tau ->
       | (TFun (t11, t12), TFun (t21, t22))
       | (TPair (t11, t12), TPair (t21, t22)) ->
         let s1 = unify t11 t21 in
-        let s2 = unify t12 t22 in
-        s2 @@ s1
+        let s2 = unify (s1 t12) (s1 t22) in
+        s1 @@ s2
       | _ -> raise (M.TypeError ("Unify failed: " ^ (typ2string t1) ^ " and " ^ (typ2string t2)))
     )
 
@@ -220,39 +250,69 @@ let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
   | M.FN (x, e) ->
     let beta = newVar() in
     let (s1, tau1) = infer ((x, SimpleTyp beta) :: env) e in
+    let _ = Printf.printf "[FN] %s = %s\n" x (typ2string tau1) in
     (s1, TFun (s1 beta, tau1))
 
   (* Var *)
   | M.VAR id -> 
-    let tau = find env id in
-    (empty_subst, tau)
+    let scheme = find env id in
+    let s = "[VAR] " ^ id ^ " is " ^ (typ_scheme2string scheme) in
+    let _ = Printf.printf "%s\n" s in
+    (
+      match scheme with
+      | SimpleTyp t -> (empty_subst, t)
+      | GenTyp (_, t) -> (empty_subst, t)
+    )
 
   (* Let Binding *)
   | M.LET ((M.VAL (x, e1)), e2) ->
+    (* infer x type *)
     let (s1, tau1) = infer env e1 in
-    let env2 = subst_env s1 env in
-    let (s2, tau2)  = infer ((x, SimpleTyp tau1) :: env2) e2 in
+    let _ = Printf.printf "[LET] %s is type %s\n" x (typ2string tau1) in
+
+    (* substituted env *)
+    let s1_env = subst_env s1 env in
+
+    (* generalize x type tau1 *)
+    let generalized = generalize s1_env tau1 in
+
+    (* bind generalized type into env *)
+    let env2 = (x, generalized) :: s1_env in
+
+    (* infer e2 *)
+    let (s2, tau2)  = infer ((x, generalized) :: env2) e2 in
     (s2 @@ s1, tau2)
   | M.LET ((M.REC (f, x, e1)), e2) ->
+
+    (* arg type *)
     let beta1 = newVar() in
+    (* return type *)
     let beta2 = newVar() in
-    let env1 = (x, SimpleTyp beta1) :: env in
-    let funcType = TFun (beta1, beta2) in
-    let env2 = (f, SimpleTyp funcType) :: env1 in
 
+    (* function type *)
+    let funType = TFun (beta1, beta2) in
 
-    let (s1, tau1) = infer env2 e1 in
-    let s2 = unify funcType (TFun (s1 beta1, tau1)) in
-    let env3 = (f, SimpleTyp (TFun ((s2 beta1), tau1))) :: (x, SimpleTyp (s2 beta1)) :: env in
-    let (s3, tau2) = infer env3 e2 in
-    (s3 @@ s2 @@ s1, tau2)
+    (* bind env *)
+    let env1 = (f, SimpleTyp funType) :: (x, SimpleTyp beta1) :: env in
 
+    (* infer function body *)
+    let (s1, tau1) = infer env1 e1 in
+    let inferredFunType = TFun (s1 beta1, tau1) in
+
+    let s2 = unify funType inferredFunType in
+
+    let s2s1_env1 = subst_env (s2 @@ s1) env1 in
+    let generalizedFunc = generalize env inferredFunType in
+    let env2 = (f, generalizedFunc) :: s2s1_env1 in
+    let (s3, tau3) = infer env2 e2 in
+    (s3 @@ s2 @@ s1, tau3)
 
   (* APP *)
   | M.APP (e1, e2) ->
-    let beta = newVar() in
     let (s1, tau1) = infer env e1 in
     let (s2, tau2) = infer (subst_env s1 env) e2 in
+
+    let beta = newVar() in
     let s3 = unify (s2 tau1) (TFun (tau2, beta)) in
     (s3 @@ s2 @@ s1, s3 beta)
 
@@ -321,7 +381,7 @@ let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
         let beta = newVar() in
         let s2 = unify tau1 (TLoc beta) in
         (s2 @@ s1, s2 beta)
-      | _ -> raise (M.TypeError ("[ASSIGN] Not a location type: " ^ (typ2string tau1)))
+      | _ -> raise (M.TypeError ("[BANG] Not a location type: " ^ (typ2string tau1)))
     )
 
   (* Control Statement *)
