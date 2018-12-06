@@ -48,7 +48,7 @@ let rec typ_scheme2string: typ_scheme -> string = fun t ->
         | hd :: tl -> hd ^ ", " ^ (varListString tl)
       )
     in
-    "[ " ^ (varListString var_list) ^ "]" ^ (typ2string tt)
+    "[ " ^ (varListString var_list) ^ "] " ^ (typ2string tt)
 
 let find env id =
   try
@@ -93,6 +93,7 @@ let union_ftv ftv_1 ftv_2 =
   ftv_1' @ ftv_2
 
 let sub_ftv ftv_1 ftv_2 =
+  (* select ftv_1 elements which is not in ftv_2 *)
   List.filter (fun v -> not (List.mem v ftv_2)) ftv_1
 
 let rec ftv_of_typ : typ -> var list = function
@@ -151,7 +152,16 @@ let subst_scheme : subst -> typ_scheme -> typ_scheme = fun subs tyscm ->
   | SimpleTyp t -> SimpleTyp (subs t)
   | GenTyp (alphas, t) ->
     (* S (\all a.t) = \all b.S{a->b}t  (where b is new variable) *)
-    let betas = List.map (fun _ -> new_var()) alphas in
+    let betas = List.map (fun alpha -> 
+        (
+          match String.get alpha 0 with
+          | 'x' -> new_var()
+          | 'w' -> new_wvar()
+          | 'e' -> new_evar()
+          | _ -> raise (M.TypeError "Invalid Alpha")
+        )
+      ) alphas 
+    in
     let s' =
       List.fold_left2
         (fun acc_subst alpha beta -> 
@@ -240,6 +250,11 @@ let rec typ2mtyp: typ -> M.typ = fun t ->
   | TLoc (lt) -> M.TyLoc (typ2mtyp lt)
   | _ -> raise (M.TypeError ("TypeError: invalid result type " ^ (typ2string t)))
 
+let rec lookUpEnv: typ_env -> typ -> bool = fun env tau ->
+  match env with
+  | [] -> false
+
+
 (* Based On W Algorithm *)
 let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
   match exp with
@@ -250,14 +265,13 @@ let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
   | M.FN (x, e) ->
     let beta = newVar() in
     let (s1, tau1) = infer ((x, SimpleTyp beta) :: env) e in
-    let _ = Printf.printf "[FN] %s = %s\n" x (typ2string tau1) in
+    (* let _ = Printf.printf "[FN] %s = %s\n" x (typ2string tau1) in *)
     (s1, TFun (s1 beta, tau1))
 
   (* Var *)
   | M.VAR id -> 
     let scheme = find env id in
-    let s = "[VAR] " ^ id ^ " is " ^ (typ_scheme2string scheme) in
-    let _ = Printf.printf "%s\n" s in
+    let _ = Printf.printf "[VAR] %s is %s\n" id (typ_scheme2string scheme) in
     (
       match scheme with
       | SimpleTyp t -> (empty_subst, t)
@@ -266,21 +280,31 @@ let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
 
   (* Let Binding *)
   | M.LET ((M.VAL (x, e1)), e2) ->
+    let rec printEnv env = 
+      (
+        match env with 
+        | [] -> "\n"
+        | hd :: tl  -> "[var: " ^ (fst hd) ^ ", scheme: " ^ (typ_scheme2string (snd hd)) ^ "]" ^ (printEnv tl) 
+      )
+    in
     (* infer x type *)
     let (s1, tau1) = infer env e1 in
     let _ = Printf.printf "[LET] %s is type %s\n" x (typ2string tau1) in
 
     (* substituted env *)
     let s1_env = subst_env s1 env in
+    let _ = Printf.printf "[Let] %s\n" (printEnv s1_env) in
 
     (* generalize x type tau1 *)
     let generalized = generalize s1_env tau1 in
+    (* let _ = Printf.printf "[LETGEN] %s\n" (typ_scheme2string generalized) in *)
 
     (* bind generalized type into env *)
     let env2 = (x, generalized) :: s1_env in
 
     (* infer e2 *)
     let (s2, tau2)  = infer ((x, generalized) :: env2) e2 in
+    let _ = Printf.printf "[LET] e2 of let %s is type %s\n" x (typ2string tau2) in
     (s2 @@ s1, tau2)
   | M.LET ((M.REC (f, x, e1)), e2) ->
 
@@ -333,7 +357,8 @@ let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
     let s3 = unify argType (TPair (tau1, tau2)) in
     (s3 @@ s2 @@ s1, TBool)
   | M.BOP (M.EQ, e1, e2) ->
-    let beta = newVar() in
+    (* EQ comparable type *)
+    let beta = newEVar() in
 
     (* infer tau1 *)
     let (s1, tau1) = infer env e1 in
