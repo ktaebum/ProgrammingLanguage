@@ -198,7 +198,7 @@ let rec unification: typ -> typ -> subst = fun t1 t2 ->
     | (TFun (pt1, pt2), TFun (pt3, pt4))
     | (TPair (pt1, pt2), TPair (pt3, pt4)) ->
       let s1 = unification pt1 pt3 in
-      let s2 = unification pt2 pt4 in
+      let s2 = unification (s1 pt2) (s1 pt4) in
       s1 @@ s2
     | _ -> raise (M.TypeError "Unification failed")
   )
