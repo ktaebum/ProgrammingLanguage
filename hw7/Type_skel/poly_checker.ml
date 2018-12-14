@@ -36,6 +36,8 @@ let rec typ2string: typ -> string = fun t ->
   | TWrite x -> "Unknown writable type " ^ x
   | TEQ x -> "Unknown eq comparable type " ^ x
   | TLoc lt -> "Location of " ^ (typ2string lt)
+
+(* For Debugging *)
 let rec typ_scheme2string: typ_scheme -> string = fun t ->
   match t with
   | SimpleTyp tt -> typ2string tt
@@ -49,6 +51,7 @@ let rec typ_scheme2string: typ_scheme -> string = fun t ->
     in
     "[ " ^ (varListString var_list) ^ "] " ^ (typ2string tt)
 
+(* Env to string *)
 let rec printEnv: typ_env -> string = fun  env  -> 
   match env with 
   | [] -> ""
@@ -57,12 +60,14 @@ let rec printEnv: typ_env -> string = fun  env  ->
 
 
 
+(* Env find *)
 let find env id =
   try
     let (_, scheme) = List.find (fun v -> (fst v) = id) env in
     scheme
   with Not_found -> raise (M.TypeError ("Unbound id " ^ id))
 
+(* Count variables *)
 let count = ref 0 
 let ecount = ref 0
 let wcount = ref 0
@@ -128,12 +133,8 @@ let generalize : typ_env -> typ -> typ_scheme = fun tyenv t ->
   let typ_ftv = ftv_of_typ t in
   let ftv = sub_ftv typ_ftv env_ftv in
   if List.length ftv = 0 then
-    (* let _ = Printf.printf "Env: %s\n" (printEnv tyenv) in *)
-    (* let _ = Printf.printf "Simple\n\n" in  *)
     SimpleTyp t
   else
-    (* let _ = Printf.printf "Env: %s\n" (printEnv tyenv) in *)
-    (* let _ = Printf.printf "Gen\n\n" in *)
     GenTyp(ftv, t)
 
 (* Definitions related to substitution *)
@@ -262,28 +263,6 @@ let rec typ2mtyp: typ -> M.typ = fun t ->
   | TLoc (lt) -> M.TyLoc (typ2mtyp lt)
   | _ -> raise (M.TypeError ("TypeError: invalid result type " ^ (typ2string t)))
 
-let rec lookUpEnv: typ_env -> typ -> bool = fun env tau ->
-  match tau with 
-  | TVar v
-  | TWrite v
-  | TEQ v -> (
-      match env with
-      | [] -> false
-      | (id, SimpleTyp TVar v') :: tl 
-      | (id, SimpleTyp TWrite v') :: tl 
-      | (id, SimpleTyp TEQ v') :: tl ->
-        if (v = v') then true
-        else lookUpEnv tl tau
-      | (id, GenTyp (l, TVar v')) :: tl
-      | (id, GenTyp (l, TWrite v')) :: tl
-      | (id, GenTyp (l, TEQ v')) :: tl ->
-        if (v = v') then true
-        else lookUpEnv tl tau
-      | _ :: tl -> lookUpEnv tl tau
-    )
-  | _ -> false
-
-
 let rec expansive: M.exp -> bool = fun exp ->
   match exp with 
   | M.CONST _ 
@@ -309,7 +288,6 @@ let rec expansive: M.exp -> bool = fun exp ->
   | M.SND e ->
     expansive e
 
-
 (* Based On W Algorithm *)
 let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
   match exp with
@@ -320,13 +298,11 @@ let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
   | M.FN (x, e) ->
     let beta = newVar() in
     let (s1, tau1) = infer ((x, SimpleTyp beta) :: env) e in
-    (* let _ = Printf.printf "[FN] %s = %s\n" x (typ2string tau1) in *)
     (s1, TFun (s1 beta, tau1))
 
   (* Var *)
   | M.VAR id -> 
     let scheme = find env id in
-    (* let _ = Printf.printf "[VAR] %s is %s\n" id (typ_scheme2string scheme) in *)
     (
       match scheme with
       | SimpleTyp t 
@@ -350,7 +326,6 @@ let rec infer: typ_env -> M.exp -> (subst * typ) = fun env exp ->
 
     let env2 = (x, scheme) :: s1_env in
     let (s2, tau2) = infer env2 e2 in 
-    (* let _ = Printf.printf "[LET] %s = %s\n" x (typ2string (s2 tau1)) in *)
     (s2 @@ s1, tau2)
   | M.LET ((M.REC (f, x, e1)), e2) ->
     (* arg type *)
